@@ -53,6 +53,9 @@ jobs:
       # one nightly to the next. Without secrets, Android uses a runner-local
       # debug key and users may need to uninstall before installing updates.
       - name: Configure optional persistent signing
+        # Do not expose the production-like nightly signing key to feature
+        # branch pushes. Only default-branch builds are published.
+        if: github.ref == 'refs/heads/moonlight-noir'
         id: signing
         shell: bash
         env:
@@ -81,9 +84,9 @@ jobs:
         shell: bash
         env:
           HESTIA_NIGHTLY_BUILD_NUMBER: ${{ github.run_number }}
-          HESTIA_NIGHTLY_STORE_PASSWORD: ${{ secrets.HESTIA_NIGHTLY_STORE_PASSWORD }}
-          HESTIA_NIGHTLY_KEY_ALIAS: ${{ secrets.HESTIA_NIGHTLY_KEY_ALIAS }}
-          HESTIA_NIGHTLY_KEY_PASSWORD: ${{ secrets.HESTIA_NIGHTLY_KEY_PASSWORD }}
+          HESTIA_NIGHTLY_STORE_PASSWORD: ${{ github.ref == 'refs/heads/moonlight-noir' && secrets.HESTIA_NIGHTLY_STORE_PASSWORD || '' }}
+          HESTIA_NIGHTLY_KEY_ALIAS: ${{ github.ref == 'refs/heads/moonlight-noir' && secrets.HESTIA_NIGHTLY_KEY_ALIAS || '' }}
+          HESTIA_NIGHTLY_KEY_PASSWORD: ${{ github.ref == 'refs/heads/moonlight-noir' && secrets.HESTIA_NIGHTLY_KEY_PASSWORD || '' }}
         run: |
           chmod +x gradlew
           ./gradlew --no-daemon \
@@ -196,9 +199,18 @@ jobs:
           fi
           # One immutable prerelease per successful default-branch push. A
           # changing tag avoids confusing release watchers such as Obtainium.
-          gh release create "$tag" dist/* \
-            --repo "$GITHUB_REPOSITORY" \
-            --target "$GITHUB_SHA" \
-            --prerelease \
-            --title "Hestia Android Nightly $NIGHTLY_VERSION" \
-            --notes-file release-notes.md
+          if gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            # Allows a rerun after a partial artifact/upload failure.
+            gh release upload "$tag" dist/* --repo "$GITHUB_REPOSITORY" --clobber
+            gh release edit "$tag" --repo "$GITHUB_REPOSITORY" \
+              --prerelease \
+              --title "Hestia Android Nightly $NIGHTLY_VERSION" \
+              --notes-file release-notes.md
+          else
+            gh release create "$tag" dist/* \
+              --repo "$GITHUB_REPOSITORY" \
+              --target "$GITHUB_SHA" \
+              --prerelease \
+              --title "Hestia Android Nightly $NIGHTLY_VERSION" \
+              --notes-file release-notes.md
+          fi
