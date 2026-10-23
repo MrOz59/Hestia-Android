@@ -1,0 +1,68 @@
+name: Android CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - moonlight-noir
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build Android debug APKs
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: gradle
+      # GitHub-hosted Ubuntu runners already ship with Android command-line tools.
+      # setup-android@v3 attempts to install the obsolete SDK package 'tools'.
+      - name: Locate Android SDK manager
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "ANDROID_HOME=$ANDROID_HOME"
+          sdkmanager_bin="$(find "$ANDROID_HOME/cmdline-tools" -maxdepth 3 -type f -name sdkmanager -print -quit)"
+          if [[ -z "$sdkmanager_bin" ]]; then
+            echo "::error::sdkmanager not found under $ANDROID_HOME/cmdline-tools"
+            exit 1
+          fi
+          echo "$(dirname "$sdkmanager_bin")" >> "$GITHUB_PATH"
+          "$sdkmanager_bin" --version
+      - name: Install required Android packages
+        run: |
+          sdkmanager --install "platforms;android-36" "build-tools;36.0.0" "ndk;27.0.12077973"
+          yes | sdkmanager --licenses > /dev/null || true
+      - name: Prepare Gradle
+        run: chmod +x gradlew
+      - name: Compile Android variants
+        run: ./gradlew --no-daemon :app:assembleNonRoot_gameDebug :app:assembleRootDebug
+      - name: JVM unit tests
+        run: ./gradlew --no-daemon :app:testNonRoot_gameDebugUnitTest
+      - name: Upload debug APKs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: hestia-android-debug-apks
+          path: app/build/outputs/apk/**/debug/*.apk
+          if-no-files-found: warn
+          retention-days: 7
+      - name: Upload JVM test reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-jvm-test-reports
+          path: |
+            app/build/reports/tests/**
+            app/build/test-results/**/*.xml
+          if-no-files-found: warn
+          retention-days: 7
