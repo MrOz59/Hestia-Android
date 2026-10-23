@@ -24,7 +24,13 @@ jobs:
           distribution: temurin
           java-version: '17'
           cache: gradle
-      - uses: android-actions/setup-android@v3
+      # GitHub-hosted Ubuntu runners already ship with Android command-line tools.
+      # setup-android@v3 attempts to install the obsolete SDK package 'tools'.
+      - name: Check Android SDK
+        run: |
+          echo "ANDROID_HOME=$ANDROID_HOME"
+          command -v sdkmanager
+          sdkmanager --version
       - name: Install required Android packages
         run: |
           sdkmanager --install "platforms;android-36" "build-tools;36.0.0" "ndk;27.0.12077973"
