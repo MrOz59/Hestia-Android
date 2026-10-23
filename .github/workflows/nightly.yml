@@ -112,7 +112,7 @@ jobs:
             for abi in arm64-v8a armeabi-v7a x86 x86_64; do
               src="app/build/outputs/apk/$flavor/nightly/app-$flavor-$abi-nightly.apk"
               [[ -f "$src" ]] || { echo "::error::Missing APK: $src"; exit 1; }
-              metadata="$("$aapt" dump badging "$src" | head -n 1)"
+              metadata="$("$aapt" dump badging "$src" | sed -n '1p')"
               actual_package="$(sed -n "s/^package: name='\\([^']*\\)'.*/\\1/p" <<< "$metadata")"
               actual_code="$(sed -n "s/.*versionCode='\\([^']*\\)'.*/\\1/p" <<< "$metadata")"
               actual_version="$(sed -n "s/.*versionName='\\([^']*\\)'.*/\\1/p" <<< "$metadata")"
@@ -185,7 +185,8 @@ jobs:
           - **Signing:** \`$SIGNING_MODE\`
           - **Install:** choose the APK matching your Android CPU architecture (usually \`arm64-v8a\`). Root builds are provided separately for legacy rooted devices.
           - **Compatibility:** installs separately from Artemis, Moonlight, and stable Hestia.
-          - **Warning:** experimental builds may be unstable. APKs signed with an ephemeral debug key cannot update prior nightlies in place; uninstall the old nightly first. Configure the signing secrets for stable updates.
+          - **Warning:** experimental builds may be unstable.
+          - **Signing note:** APKs signed with an ephemeral debug key cannot update prior nightlies in place; uninstall the old nightly first. Configure the signing secrets for stable updates.
           - Checksums are included in \`SHA256SUMS.txt\`.
 
           Built automatically after the Android unit tests passed.
