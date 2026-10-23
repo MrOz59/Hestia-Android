@@ -46,6 +46,31 @@ jobs:
         run: chmod +x gradlew
       - name: Compile Android variants
         run: ./gradlew --no-daemon :app:assembleNonRoot_gameDebug :app:assembleRootDebug
+      - name: Check package IDs of built APKs
+        shell: bash
+        run: |
+          set -euo pipefail
+          aapt="$ANDROID_HOME/build-tools/36.0.0/aapt"
+          [[ -x "$aapt" ]] || { echo "::error::aapt is not available"; exit 1; }
+          count=0
+          while IFS= read -r -d '' apk; do
+            if [[ "$apk" == *"/root/debug/"* ]]; then
+              expected="com.mroz59.hestia.root.debug"
+            elif [[ "$apk" == *"/nonRoot_game/debug/"* ]]; then
+              expected="com.mroz59.hestia.debug"
+            else
+              echo "::error::Unknown APK flavor: $apk"
+              exit 1
+            fi
+            actual="$("$aapt" dump badging "$apk" | sed -n "s/^package: name='\\([^']*\\)'.*/\\1/p")"
+            echo "$apk: $actual"
+            [[ "$actual" == "$expected" ]] || {
+              echo "::error::Unexpected package ID $actual (expected $expected)"
+              exit 1
+            }
+            count=$((count+1))
+          done < <(find app/build/outputs/apk -name '*.apk' -type f -print0)
+          (( count > 0 )) || { echo "::error::No built APKs found"; exit 1; }
       - name: JVM unit tests
         run: ./gradlew --no-daemon :app:testNonRoot_gameDebugUnitTest
       - name: Upload debug APKs
