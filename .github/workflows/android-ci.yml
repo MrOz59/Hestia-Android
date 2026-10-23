@@ -1,0 +1,45 @@
+name: Android CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - moonlight-noir
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build Android debug APKs
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: gradle
+      - uses: android-actions/setup-android@v3
+      - name: Install required Android packages
+        run: |
+          sdkmanager --install "platforms;android-36" "build-tools;36.0.0" "ndk;27.0.12077973"
+          yes | sdkmanager --licenses > /dev/null || true
+      - name: Prepare Gradle
+        run: chmod +x gradlew
+      - name: Compile Android variants
+        run: ./gradlew --no-daemon :app:assembleNonRoot_gameDebug :app:assembleRootDebug
+      - name: JVM unit tests
+        run: ./gradlew --no-daemon :app:testNonRoot_gameDebugUnitTest
+      - name: Upload debug APKs
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: hestia-android-debug-apks
+          path: app/build/outputs/apk/**/debug/*.apk
+          if-no-files-found: error
+          retention-days: 7
