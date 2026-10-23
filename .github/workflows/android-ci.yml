@@ -26,11 +26,18 @@ jobs:
           cache: gradle
       # GitHub-hosted Ubuntu runners already ship with Android command-line tools.
       # setup-android@v3 attempts to install the obsolete SDK package 'tools'.
-      - name: Check Android SDK
+      - name: Locate Android SDK manager
+        shell: bash
         run: |
+          set -euo pipefail
           echo "ANDROID_HOME=$ANDROID_HOME"
-          command -v sdkmanager
-          sdkmanager --version
+          sdkmanager_bin="$(find "$ANDROID_HOME/cmdline-tools" -maxdepth 3 -type f -name sdkmanager -print -quit)"
+          if [[ -z "$sdkmanager_bin" ]]; then
+            echo "::error::sdkmanager not found under $ANDROID_HOME/cmdline-tools"
+            exit 1
+          fi
+          echo "$(dirname "$sdkmanager_bin")" >> "$GITHUB_PATH"
+          "$sdkmanager_bin" --version
       - name: Install required Android packages
         run: |
           sdkmanager --install "platforms;android-36" "build-tools;36.0.0" "ndk;27.0.12077973"
