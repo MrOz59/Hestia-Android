@@ -1,5 +1,10 @@
 apply plugin: 'com.android.application'
 
+// This override is only supplied by the automated nightly workflow.
+// It gives consecutive nightlies increasing versions for in-place upgrades.
+def nightlyBuildNumber = System.getenv("HESTIA_NIGHTLY_BUILD_NUMBER")
+def nightlyVersionCode = nightlyBuildNumber ? 100000 + Integer.parseInt(nightlyBuildNumber) : null
+
 android {
     ndkVersion "27.0.12077973"
 
@@ -12,7 +17,7 @@ android {
         targetSdk 34
 
         versionName "20.2.6"
-        versionCode = 57
+        versionCode = nightlyVersionCode != null ? nightlyVersionCode : 57
 
         // Generate native debug symbols to allow Google Play to symbolicate our native crashes
         ndk.debugSymbolLevel = 'FULL'
@@ -94,6 +99,20 @@ android {
         }
     }
 
+    signingConfigs {
+        // When a persistent signing key is configured in GitHub Actions,
+        // use it for nightlies. Otherwise the cloned debug config is used,
+        // which is valid for installation but may change between CI runners.
+        if (System.getenv("HESTIA_NIGHTLY_KEYSTORE_PATH")) {
+            nightly {
+                storeFile file(System.getenv("HESTIA_NIGHTLY_KEYSTORE_PATH"))
+                storePassword System.getenv("HESTIA_NIGHTLY_STORE_PASSWORD")
+                keyAlias System.getenv("HESTIA_NIGHTLY_KEY_ALIAS")
+                keyPassword System.getenv("HESTIA_NIGHTLY_KEY_PASSWORD")
+            }
+        }
+    }
+
     buildTypes {
         debug {
             applicationIdSuffix ".debug"
@@ -103,6 +122,18 @@ android {
 
             minifyEnabled true
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
+        }
+        nightly {
+            initWith debug
+            applicationIdSuffix ".nightly"
+            versionNameSuffix "-nightly.${nightlyBuildNumber ?: 'local'}"
+            resValue "string", "app_label", "Hestia Nightly"
+            resValue "string", "app_label_root", "Hestia Nightly (Root)"
+            resValue "string", "app_label_game", "Hestia Nightly (Game)"
+
+            if (System.getenv("HESTIA_NIGHTLY_KEYSTORE_PATH")) {
+                signingConfig signingConfigs.nightly
+            }
         }
         release {
             // The flavor application IDs already belong to Hestia. Do not use
