@@ -28,6 +28,8 @@ import com.limelight.binding.video.CrashListener;
 import com.limelight.binding.video.MediaCodecDecoderRenderer;
 import com.limelight.binding.video.MediaCodecHelper;
 import com.limelight.binding.video.PerfOverlayListener;
+import com.limelight.hestia.HestiaCapabilities;
+import com.limelight.hestia.HestiaSessionRequest;
 import com.limelight.nvstream.NvConnection;
 import com.limelight.nvstream.NvConnectionListener;
 import com.limelight.nvstream.StreamConfiguration;
@@ -864,17 +866,58 @@ public class Game extends AppCompatActivity implements SurfaceHolder.Callback,
         // The connection will be started when the surface gets created
         //streamContainer.getHolder().addCallback(this);
 
+        final int prepareWidth = displayWidth;
+        final int prepareHeight = displayHeight;
+        final int prepareFps = Math.round(prefConfig.fps);
+        final int prepareRefreshRate = Math.round(displayRefreshRate);
+        final int prepareBitrate = isMetered ? prefConfig.meteredBitrate : prefConfig.bitrate;
+        final boolean prepareHdr = willStreamHdr;
+
         streamContainer.setOnSurfaceAvailable(() -> {
             if (!attemptedConnection) {
                 LimeLog.info("Surface is available, starting connection...");
                 attemptedConnection = true;
 
-                // Der Decoder erhält die jeweils aktive Oberfläche vom Container
                 decoderRenderer.setRenderTarget(streamContainer.getSurface());
 
-                // Starten Sie die NvConnection
-                conn.start(new AndroidAudioRenderer(Game.this, prefConfig.playHostAudio),
-                        decoderRenderer, Game.this);
+                if (!vDisplay || httpConn == null) {
+                    // No enhanced session requested. Don't delay ordinary
+                    // Moonlight/GameStream streaming on non-Hermes hosts.
+                    conn.start(new AndroidAudioRenderer(Game.this, prefConfig.playHostAudio),
+                            decoderRenderer, Game.this);
+                    return;
+                }
+
+                // Hermes requires prepare before the normal GameStream launch.
+                // All HTTP requests run off the UI thread. Any Hestia failure
+                // must fall back to the existing streaming implementation.
+                new Thread(() -> {
+                    try {
+                        HestiaCapabilities caps = httpConn.getHestiaCapabilities();
+                        if (caps.isSupported() && caps.hasVirtualDisplay()
+                                && httpConn.hasHestiaLaunchPermission()) {
+                            HestiaSessionRequest payload = HestiaSessionRequest.create(
+                                    prepareWidth, prepareHeight, prepareFps,
+                                    prepareBitrate, prefConfig.resolutionScaleFactor,
+                                    prepareHdr, true, appId, prepareRefreshRate,
+                                    BuildConfig.VERSION_NAME);
+                            if (payload != null && httpConn.prepareHestiaSession(payload)) {
+                                LimeLog.info("Hestia v1 virtual display session prepared");
+                            } else {
+                                LimeLog.warning("Hestia v1 preparation unavailable; using GameStream launch");
+                            }
+                        }
+                    } catch (java.io.IOException e) {
+                        LimeLog.info("Hestia API unavailable; using GameStream launch: "
+                                + e.getClass().getSimpleName());
+                    }
+                    runOnUiThread(() -> {
+                        if (!isFinishing() && !isDestroyed() && conn != null) {
+                            conn.start(new AndroidAudioRenderer(Game.this, prefConfig.playHostAudio),
+                                    decoderRenderer, Game.this);
+                        }
+                    });
+                }, "HestiaSessionPrepare").start();
             }
         });
 
