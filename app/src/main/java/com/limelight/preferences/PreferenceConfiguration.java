@@ -60,6 +60,8 @@ public class PreferenceConfiguration {
     private static final String SMALL_ICONS_PREF_STRING = "checkbox_small_icon_mode";
     private static final String MULTI_CONTROLLER_PREF_STRING = "checkbox_multi_controller";
     static final String AUDIO_CONFIG_PREF_STRING = "list_audio_config";
+    static final String ENABLE_MICROPHONE_PREF_STRING = "checkbox_enable_microphone";
+    static final String MICROPHONE_DEVICE_PREF_STRING = "list_microphone_device";
     private static final String USB_DRIVER_PREF_SRING = "checkbox_usb_driver";
     private static final String VIDEO_FORMAT_PREF_STRING = "video_format";
     private static final String ONSCREEN_CONTROLLER_PREF_STRING = "checkbox_show_onscreen_controls";
@@ -86,6 +88,7 @@ public class PreferenceConfiguration {
     private static final String FRAME_PACING_PREF_STRING = "frame_pacing";
     private static final String LOW_LATENCY_FRAME_BALANCE_PREF_STRING = "pref_low_latency_frame_balance";
     private static final String ABSOLUTE_MOUSE_MODE_PREF_STRING = "checkbox_absolute_mouse_mode";
+    private static final String CONNECT_MOUSE_WIGGLE_PREF_STRING = "checkbox_connect_mouse_wiggle";
     private static final String ENABLE_AUDIO_FX_PREF_STRING = "checkbox_enable_audiofx";
     private static final String REDUCE_REFRESH_RATE_PREF_STRING = "checkbox_reduce_refresh_rate";
     private static final String FULL_RANGE_PREF_STRING = "checkbox_full_range";
@@ -179,9 +182,12 @@ public class PreferenceConfiguration {
     private static final boolean DEFAULT_FLIP_FACE_BUTTONS = false;
     private static final boolean DEFAULT_TOUCHSCREEN_TRACKPAD = true;
     private static final String DEFAULT_AUDIO_CONFIG = "2"; // Stereo
+    private static final boolean DEFAULT_ENABLE_MICROPHONE = false;
+    private static final String DEFAULT_MICROPHONE_DEVICE = "0";
     private static final boolean DEFAULT_LATENCY_TOAST = false;
     private static final String DEFAULT_FRAME_PACING = "latency";
     private static final boolean DEFAULT_ABSOLUTE_MOUSE_MODE = false;
+    private static final boolean DEFAULT_CONNECT_MOUSE_WIGGLE = true;
     private static final boolean DEFAULT_ENABLE_AUDIO_FX = false;
     private static final boolean DEFAULT_REDUCE_REFRESH_RATE = false;
     private static final boolean DEFAULT_FULL_RANGE = false;
@@ -368,8 +374,11 @@ public class PreferenceConfiguration {
     public int vibrateFallbackToDeviceStrength;
     public boolean touchscreenTrackpad;
     public MoonBridge.AudioConfiguration audioConfiguration;
+    public boolean enableMicrophone;
+    public int microphoneDeviceId;
     public int framePacing;
     public boolean absoluteMouseMode;
+    public boolean connectMouseWiggle;
     public boolean enableAudioFx;
     public boolean reduceRefreshRate;
     public boolean fullRange;
@@ -856,6 +865,15 @@ private static int getFramePacingValue(Context context) {
             config.audioConfiguration = MoonBridge.AUDIO_CONFIGURATION_STEREO;
         }
 
+        config.enableMicrophone = prefs.getBoolean(ENABLE_MICROPHONE_PREF_STRING, DEFAULT_ENABLE_MICROPHONE);
+        try {
+            config.microphoneDeviceId = Integer.parseInt(prefs.getString(MICROPHONE_DEVICE_PREF_STRING, DEFAULT_MICROPHONE_DEVICE));
+        }
+        catch (NumberFormatException e) {
+            config.microphoneDeviceId = 0;
+            prefs.edit().putString(MICROPHONE_DEVICE_PREF_STRING, DEFAULT_MICROPHONE_DEVICE).apply();
+        }
+
         config.videoScaleMode = getVideoScaleMode(context);
 
         config.videoFormat = getVideoFormatValue(context);
@@ -1006,6 +1024,7 @@ private static int getFramePacingValue(Context context) {
         config.trackpadSwapAxis = prefs.getBoolean(CHECKBOX_TRACKPAD_SWAP_AXIS, DEFAULT_TRACKPAD_SWAP_AXIS);
 
         config.absoluteMouseMode = prefs.getBoolean(ABSOLUTE_MOUSE_MODE_PREF_STRING, DEFAULT_ABSOLUTE_MOUSE_MODE);
+        config.connectMouseWiggle = prefs.getBoolean(CONNECT_MOUSE_WIGGLE_PREF_STRING, DEFAULT_CONNECT_MOUSE_WIGGLE);
         config.enableBatteryReport = prefs.getBoolean(CHECKBOX_ENABLE_BATTERY_REPORT, DEFAULT_GAMEPAD_ENABLE_BATTERY_REPORT);
         config.forceQwerty = prefs.getBoolean(CHECKBOX_FORCE_QWERTY, DEFAULT_FORCE_QWERTY);
         config.backAsMeta = prefs.getBoolean(CHECKBOX_BACK_AS_META, DEFAULT_SEND_META_ON_PHYSICAL_BACK);
