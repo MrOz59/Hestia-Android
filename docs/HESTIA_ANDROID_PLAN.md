@@ -2,7 +2,7 @@
 
 Hestia Android is a fork of [Artemis](https://github.com/ClassicOldSong/moonlight-android), based on Moonlight Android. The goal is to add opt-in Hermes/Hestia protocol extensions while preserving the existing GameStream streaming path and compatibility with non-Hermes hosts.
 
-This document describes **planned work**, not features implemented in this fork.
+This document mostly describes **planned work**; the "Host status indicators" section describes what is implemented.
 
 ## Design constraints
 
@@ -42,6 +42,19 @@ The capabilities response advertises `hestia_protocol`, `min_client_protocol`, a
 5. **Additional controls**: clipboard and approved server commands, gated by per-client permissions and explicit user actions.
 6. **Input quality**: audit Android stylus events through `Game.handleMotionEvent` → `sendPenEvent` → Hermes → libvirtualhid. Preserve pressure, hover, tool/eraser, tilt and button semantics; add synthetic input tests, especially stylus + touch combinations.
 7. **Branding and distribution**: update app labels/icons/package IDs, signing and release workflow in a separate reviewed PR; verify side-by-side installation and upgrade behavior before shipping.
+
+## Host status indicators
+
+Paired Hermes hosts are probed through the Hestia API (`capabilities`, `client/permissions`, `diagnostics`, `display/status`) by `ComputerManagerService`, on a slower schedule than serverinfo polling (15 s for Hermes hosts, 2 min for hosts that are not Hermes, immediately when the running app changes). `HestiaHostStatus` turns the responses into findings with a severity (`OK`, `WARNING`, `ERROR`, plus neutral `INFO` notes); it is pure Java and covered by `HestiaHostStatusTest`.
+
+What the user sees:
+
+- **Host grid**: a badge on the computer icon (green check, amber warning, red error) and a coloured "Hermes · Ready / Needs attention / Problem" line under the name. Non-Hermes hosts look exactly as before.
+- **Context menu**: the header carries the same verdict and a *Hermes status* entry opens a dialog listing every finding, with *Refresh* and, only when the physical monitor was left off and the client holds the permission, *Restore display* (calls `display/recover` after confirmation, since Hermes stops a running app as part of recovery).
+- **App list**: a banner under the host name with the most important finding; tapping it opens the same dialog.
+- **Launch**: when a virtual display is requested, the outcome of `session/prepare` is shown as a toast — success, or the reason it was skipped (missing *Launch Apps* permission, unsupported FPS/resolution, incompatible protocol, API error or unreachable API). The stream still starts with default settings.
+
+Findings cover: incompatible protocol, unreachable API, rejected pairing certificate (401), missing *Launch Apps*/*View Streams*/*List Apps*/input permissions (Hermes gives every device paired after the first only *View Streams* + *List Apps*), the host's own preflight checks (encoder, display, virtual display, session), a physical monitor left off with nothing streaming, recent abnormal session endings (handshake/protocol failure, revoked permission, lost client), and clipboard availability.
 
 ## Stylus considerations
 
