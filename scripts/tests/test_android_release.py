@@ -70,5 +70,92 @@ path.write_text(json.dumps(data))
             self.assertEqual(0o700, backup.stat().st_mode & 0o777)
 
 
+class SigningBackupTest(unittest.TestCase):
+    def require_gpg_agent(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            result = subprocess.run(['gpg-connect-agent', '--homedir', temporary, '/bye'],
+                                    capture_output=True, timeout=10)
+            if result.returncode:
+                if os.environ.get('GITHUB_ACTIONS') == 'true':
+                    self.fail('The CI runner must support GnuPG agent operations')
+                self.skipTest('This local sandbox does not allow GnuPG agent sockets; CI runs this check')
+            subprocess.run(['gpgconf', '--homedir', temporary, '--kill', 'gpg-agent'],
+                           capture_output=True, timeout=10)
+
+    @unittest.skipUnless(shutil.which('gpg'), 'GnuPG required')
+    def test_encrypted_backup_roundtrip_and_wrong_password_rejection(self):
+        self.require_gpg_agent()
+        import importlib.util
+        specification = importlib.util.spec_from_file_location('signing_backup', ROOT / 'scripts/signing-backup.py')
+        module = importlib.util.module_from_spec(specification)
+        specification.loader.exec_module(module)
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            source = root / 'private'
+            source.mkdir()
+            key = b'test-private-key-bytes'
+            metadata = b'{"alias":"hestia","password":"private-test-password"}'
+            (source / 'hestia-nightly.p12').write_bytes(key)
+            (source / 'signing.json').write_bytes(metadata)
+            encrypted = root / 'backup.gpg'
+            password = 'test-backup-password-' + 'a' * 32
+            module.backup('encrypt', source, encrypted, password)
+            self.assertNotIn(key, encrypted.read_bytes())
+            self.assertNotIn(metadata, encrypted.read_bytes())
+            with self.assertRaises(subprocess.CalledProcessError):
+                module.backup('decrypt', root / 'wrong', encrypted, 'wrong-password-' + 'b' * 32)
+            restored = root / 'restored'
+            module.backup('decrypt', restored, encrypted, password)
+            self.assertEqual(key, (restored / 'hestia-nightly.p12').read_bytes())
+            self.assertEqual(metadata, (restored / 'signing.json').read_bytes())
+            with self.assertRaises(ValueError):
+                module.backup('decrypt', restored, encrypted, password)
+            with self.assertRaises(ValueError):
+                module.backup('encrypt', source, encrypted, 'too-short')
+
+    @unittest.skipUnless(shutil.which('gpg'), 'GnuPG required')
+    def test_restore_rejects_unexpected_archive_paths(self):
+        self.require_gpg_agent()
+        import importlib.util
+        import io
+        import tarfile
+        specification = importlib.util.spec_from_file_location('signing_backup', ROOT / 'scripts/signing-backup.py')
+        module = importlib.util.module_from_spec(specification)
+        specification.loader.exec_module(module)
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            archive = root / 'unexpected.tar.gz'
+            with tarfile.open(archive, 'w:gz') as tar:
+                member = tarfile.TarInfo('../outside')
+                member.size = 1
+                tar.addfile(member, io.BytesIO(b'x'))
+            password = 'test-backup-password-' + 'a' * 32
+            encrypted = root / 'unexpected.gpg'
+            subprocess.run(['gpg', '--batch', '--yes', '--pinentry-mode', 'loopback',
+                            '--passphrase-fd', '0', '--symmetric', '--cipher-algo', 'AES256',
+                            '--output', str(encrypted), str(archive)], input=password.encode(),
+                           check=True, capture_output=True)
+            with self.assertRaises(ValueError):
+                module.backup('decrypt', root / 'restored', encrypted, password)
+            self.assertFalse((root / 'outside').exists())
+
+    @unittest.skipUnless(shutil.which('keytool'), 'Java keytool required')
+    def test_generate_only_does_not_contact_github(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            binary = root / 'bin'
+            binary.mkdir()
+            gh = binary / 'gh'
+            gh.write_text('#!/bin/sh\nexit 99\n')
+            gh.chmod(0o700)
+            env = dict(os.environ, PATH=str(binary) + os.pathsep + os.environ['PATH'])
+            result = subprocess.run([sys.executable, str(ROOT / 'scripts/configure-android-signing.py'),
+                                     '--directory', str(root / 'key'), '--generate-only'],
+                                    env=env, capture_output=True, check=True, text=True)
+            identity = json.loads((root / 'key/signing.json').read_text())
+            self.assertNotIn(identity['password'], result.stdout + result.stderr)
+            self.assertTrue((root / 'key/hestia-nightly.p12').is_file())
+
+
 if __name__ == '__main__':
     unittest.main()
