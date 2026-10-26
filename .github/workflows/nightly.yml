@@ -92,13 +92,33 @@ jobs:
       - name: Test release preparation and signing setup tools
         run: python3 -m unittest discover -s scripts/tests -p 'test_android_release.py'
 
+      - name: Exercise custom signing with a temporary test key on feature branches
+        if: github.ref != 'refs/heads/moonlight-noir' && !startsWith(github.ref, 'refs/heads/release/october-2026-rc')
+        shell: bash
+        run: |
+          set -euo pipefail
+          test_password="$(openssl rand -hex 32)"
+          echo "::add-mask::$test_password"
+          export HESTIA_TEST_SIGNING_PASSWORD="$test_password"
+          keytool -genkeypair -noprompt -storetype PKCS12 \
+            -keystore "$RUNNER_TEMP/hestia-nightly.p12" -alias hestia-test \
+            -storepass:env HESTIA_TEST_SIGNING_PASSWORD -keypass:env HESTIA_TEST_SIGNING_PASSWORD \
+            -keyalg RSA -keysize 2048 -validity 36500 -dname 'CN=Hestia CI temporary test'
+          keytool -exportcert -keystore "$RUNNER_TEMP/hestia-nightly.p12" -alias hestia-test \
+            -storepass:env HESTIA_TEST_SIGNING_PASSWORD -file "$RUNNER_TEMP/hestia-signing.der"
+          certificate="$(sha256sum "$RUNNER_TEMP/hestia-signing.der" | cut -d ' ' -f 1)"
+          echo "HESTIA_EXPECTED_CERT_SHA256=$certificate" >> "$GITHUB_ENV"
+          echo "HESTIA_TEST_SIGNING_PASSWORD=$test_password" >> "$GITHUB_ENV"
+          echo "HESTIA_TEST_SIGNING_ALIAS=hestia-test" >> "$GITHUB_ENV"
+          echo "HESTIA_NIGHTLY_KEYSTORE_PATH=$RUNNER_TEMP/hestia-nightly.p12" >> "$GITHUB_ENV"
+
       - name: Build nightly variants and run JVM tests
         shell: bash
         env:
           HESTIA_NIGHTLY_BUILD_NUMBER: ${{ github.run_number }}
-          HESTIA_NIGHTLY_STORE_PASSWORD: ${{ (github.ref == 'refs/heads/moonlight-noir' || startsWith(github.ref, 'refs/heads/release/october-2026-rc')) && secrets.HESTIA_NIGHTLY_STORE_PASSWORD || '' }}
-          HESTIA_NIGHTLY_KEY_ALIAS: ${{ (github.ref == 'refs/heads/moonlight-noir' || startsWith(github.ref, 'refs/heads/release/october-2026-rc')) && secrets.HESTIA_NIGHTLY_KEY_ALIAS || '' }}
-          HESTIA_NIGHTLY_KEY_PASSWORD: ${{ (github.ref == 'refs/heads/moonlight-noir' || startsWith(github.ref, 'refs/heads/release/october-2026-rc')) && secrets.HESTIA_NIGHTLY_KEY_PASSWORD || '' }}
+          HESTIA_NIGHTLY_STORE_PASSWORD: ${{ (github.ref == 'refs/heads/moonlight-noir' || startsWith(github.ref, 'refs/heads/release/october-2026-rc')) && secrets.HESTIA_NIGHTLY_STORE_PASSWORD || env.HESTIA_TEST_SIGNING_PASSWORD || '' }}
+          HESTIA_NIGHTLY_KEY_ALIAS: ${{ (github.ref == 'refs/heads/moonlight-noir' || startsWith(github.ref, 'refs/heads/release/october-2026-rc')) && secrets.HESTIA_NIGHTLY_KEY_ALIAS || env.HESTIA_TEST_SIGNING_ALIAS || '' }}
+          HESTIA_NIGHTLY_KEY_PASSWORD: ${{ (github.ref == 'refs/heads/moonlight-noir' || startsWith(github.ref, 'refs/heads/release/october-2026-rc')) && secrets.HESTIA_NIGHTLY_KEY_PASSWORD || env.HESTIA_TEST_SIGNING_PASSWORD || '' }}
         run: |
           chmod +x gradlew
           ./gradlew --no-daemon \

@@ -8,7 +8,9 @@ across all eight APKs, launcher metadata and the arm64 codec/JNI entry points.
 
 The existing four `HESTIA_NIGHTLY_*` repository secrets are reused for nightlies
 and RCs. The private key is exposed only on the default branch and the controlled
-`release/october-2026-rc*` branches; feature and PR builds use temporary test keys.
+`release/october-2026-rc*` branches; feature and PR builds use temporary test keys. Feature builds also exercise the
+custom keystore path and verify the APK signer against that temporary certificate,
+without exposing the permanent key.
 Creating or updating those release branches is a trusted maintainer operation.
 
 On a trusted computer with Java `keytool` and authenticated GitHub CLI, run:
