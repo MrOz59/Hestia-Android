@@ -1,0 +1,22 @@
+{
+  "component": "Hestia-Android",
+  "repository": "MrOz59/Hestia-Android",
+  "tag": "october-2026-rc1",
+  "source_sha": "0ef14edfd152b4d220d3f2992c82c101e582ca44",
+  "build_run": 40258250143,
+  "check_runs": [
+    40258249952,
+    40258254860
+  ],
+  "build_version": "20.2.6-nightly.32",
+  "artifacts": [
+    {
+      "id": 12623770945,
+      "name": "Hestia-Android-nightly-32",
+      "digest": "sha256:3d104bdd4c9f501e61a974e8dfc0cdc7835e948d9192851b75367694f781be71"
+    }
+  ],
+  "groups": {
+    "*.apk": 8
+  }
+}
