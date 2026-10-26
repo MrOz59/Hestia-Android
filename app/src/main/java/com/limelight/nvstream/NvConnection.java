@@ -640,4 +640,3 @@ public class NvConnection {
         return MoonBridge.findExternalAddressIP4(stunHostname, stunPort);
     }
 }
-
