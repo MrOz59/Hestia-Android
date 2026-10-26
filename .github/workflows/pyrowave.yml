@@ -1,0 +1,58 @@
+name: PyroWave Android
+
+on:
+  push:
+    branches: [feature/pyrowave-codec]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pyrowave-android-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  android:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          submodules: recursive
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: gradle
+      - name: Install Android build dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          sdkmanager_bin="$(find "$ANDROID_HOME/cmdline-tools" -maxdepth 3 -type f -name sdkmanager -print -quit)"
+          "$sdkmanager_bin" --install "platforms;android-36" "build-tools;36.0.0" "ndk;27.0.12077973"
+      - name: Build pinned Vulkan codec for arm64
+        run: bash scripts/build-pyrowave-android.sh
+      - name: Build baseline and optional codec APKs and run lifecycle tests
+        run: |
+          chmod +x gradlew
+          ./gradlew --no-daemon :app:assembleNonRoot_gameDebug :app:testNonRoot_gameDebugUnitTest -PhestiaPyrowave=true
+      - name: Verify arm64 APK contains the codec and JNI entry points
+        shell: bash
+        run: |
+          set -euo pipefail
+          apk="$(find app/build/outputs/apk/nonRoot_game/debug -name '*arm64-v8a*.apk' -print -quit)"
+          [[ -f "$apk" ]]
+          unzip -l "$apk" | grep 'lib/arm64-v8a/libpyrowave-shared.so'
+          unzip -p "$apk" lib/arm64-v8a/libmoonlight-core.so > /tmp/moonlight-core.so
+          "$ANDROID_HOME/ndk/27.0.12077973/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-readelf" --dyn-syms /tmp/moonlight-core.so | grep 'PyroWaveBridge_nativeDecode'
+      - uses: actions/upload-artifact@v6
+        if: always()
+        with:
+          name: hestia-android-pyrowave-debug
+          path: |
+            app/build/outputs/apk/nonRoot_game/debug/*.apk
+            app/build/reports/tests/**
+          if-no-files-found: warn
+          retention-days: 14
