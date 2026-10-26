@@ -1,0 +1,159 @@
+name: Set up Android signing from the browser
+
+on:
+  workflow_dispatch:
+    inputs:
+      restore_run_id:
+        description: 'Leave 0 for first setup. For recovery, enter the previous setup run ID.'
+        required: true
+        default: '0'
+        type: string
+  pull_request:
+    paths:
+      - '.github/workflows/setup-android-signing.yml'
+      - 'scripts/configure-android-signing.py'
+      - 'scripts/signing-backup.py'
+      - 'scripts/tests/test_android_release.py'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: android-signing-setup
+  cancel-in-progress: false
+
+jobs:
+  test-tools:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '21'
+      - name: Test key reuse, secret handling and encrypted backup recovery
+        run: python3 -m unittest discover -s scripts/tests -p 'test_android_release.py'
+
+  configure:
+    needs: test-tools
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/moonlight-noir'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      actions: write
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '21'
+      - name: Check setup credentials and protect existing signing identities
+        id: preflight
+        env:
+          GH_TOKEN: ${{ secrets.HESTIA_SIGNING_SETUP_TOKEN }}
+          READ_TOKEN: ${{ github.token }}
+          BACKUP_PASSWORD: ${{ secrets.HESTIA_SIGNING_BACKUP_PASSWORD }}
+          RESTORE_RUN_ID: ${{ inputs.restore_run_id }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ -n "$GH_TOKEN" ]] || { echo '::error::Add HESTIA_SIGNING_SETUP_TOKEN first.'; exit 1; }
+          [[ "${#BACKUP_PASSWORD}" -ge 32 ]] || { echo '::error::Set HESTIA_SIGNING_BACKUP_PASSWORD to at least 32 characters.'; exit 1; }
+          [[ "$RESTORE_RUN_ID" =~ ^(0|[1-9][0-9]*)$ ]]
+          names="$(gh secret list --repo "$GITHUB_REPOSITORY" --json name --jq '.[].name')"
+          count=0
+          for name in HESTIA_NIGHTLY_KEYSTORE_BASE64 HESTIA_NIGHTLY_STORE_PASSWORD HESTIA_NIGHTLY_KEY_ALIAS HESTIA_NIGHTLY_KEY_PASSWORD; do
+            if grep -Fxq "$name" <<< "$names"; then count=$((count+1)); fi
+          done
+          if [[ "$count" == 4 ]]; then
+            echo '::error::Signing is already configured. This setup refuses to rotate an existing key; run the RC workflow instead.'
+            exit 1
+          fi
+          if [[ "$count" != 0 && "$RESTORE_RUN_ID" == 0 ]]; then
+            echo '::error::Partial signing setup found. Recover using the previous setup run ID; do not generate a new key.'
+            exit 1
+          fi
+          if [[ "$RESTORE_RUN_ID" != 0 ]]; then
+            GH_TOKEN="$READ_TOKEN" gh api "repos/$GITHUB_REPOSITORY/actions/runs/$RESTORE_RUN_ID" > "$RUNNER_TEMP/restore-run.json"
+            python3 - <<'PY'
+          import json, os
+          from pathlib import Path
+          run = json.loads((Path(os.environ['RUNNER_TEMP']) / 'restore-run.json').read_text())
+          assert run['event'] == 'workflow_dispatch'
+          assert run['head_branch'] == 'moonlight-noir'
+          assert run['path'] == '.github/workflows/setup-android-signing.yml'
+          assert run['head_repository']['full_name'] == os.environ['GITHUB_REPOSITORY']
+          PY
+          fi
+          echo "restore=$RESTORE_RUN_ID" >> "$GITHUB_OUTPUT"
+
+      - name: Download the original encrypted backup for recovery
+        if: steps.preflight.outputs.restore != '0'
+        uses: actions/download-artifact@v6
+        with:
+          name: hestia-signing-backup-${{ steps.preflight.outputs.restore }}
+          run-id: ${{ steps.preflight.outputs.restore }}
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/restored-backup
+
+      - name: Create or restore the private signing identity
+        env:
+          BACKUP_PASSWORD: ${{ secrets.HESTIA_SIGNING_BACKUP_PASSWORD }}
+          RESTORE_RUN_ID: ${{ steps.preflight.outputs.restore }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          backup="$RUNNER_TEMP/hestia-signing-private"
+          if [[ "$RESTORE_RUN_ID" != 0 ]]; then
+            python3 scripts/signing-backup.py decrypt --directory "$backup" \
+              --file "$RUNNER_TEMP/restored-backup/hestia-signing-backup.tar.gz.gpg"
+          fi
+          python3 scripts/configure-android-signing.py --directory "$backup" --generate-only
+          python3 scripts/signing-backup.py encrypt --directory "$backup" \
+            --file "$RUNNER_TEMP/hestia-signing-backup.tar.gz.gpg"
+
+      # Upload the encrypted recovery copy BEFORE writing any signing secret.
+      # Even a partial API failure can then be recovered without changing keys.
+      - name: Save the encrypted signing backup
+        uses: actions/upload-artifact@v6
+        with:
+          name: hestia-signing-backup-${{ github.run_id }}
+          path: ${{ runner.temp }}/hestia-signing-backup.tar.gz.gpg
+          if-no-files-found: error
+          retention-days: 90
+
+      - name: Configure the four permanent signing secrets
+        env:
+          GH_TOKEN: ${{ secrets.HESTIA_SIGNING_SETUP_TOKEN }}
+        run: |
+          python3 scripts/configure-android-signing.py \
+            --repository "$GITHUB_REPOSITORY" --directory "$RUNNER_TEMP/hestia-signing-private"
+
+      - name: Start the signed Android RC2 build
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow run nightly.yml --repo "$GITHUB_REPOSITORY" --ref release/october-2026-rc2
+
+      - name: Remove the temporary setup token secret
+        env:
+          GH_TOKEN: ${{ secrets.HESTIA_SIGNING_SETUP_TOKEN }}
+        run: gh secret delete HESTIA_SIGNING_SETUP_TOKEN --repo "$GITHUB_REPOSITORY"
+
+      - name: Record setup result
+        run: |
+          {
+            echo 'Permanent signing configured and RC2 build started.'
+            echo "Download this run's encrypted hestia-signing-backup artifact and retain its backup password."
+            echo 'Revoke the temporary personal access token in GitHub Settings.'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Remove runner-local private signing material
+        if: always()
+        run: rm -rf "$RUNNER_TEMP/hestia-signing-private" "$RUNNER_TEMP/hestia-signing-backup.tar.gz.gpg" "$RUNNER_TEMP/restored-backup"

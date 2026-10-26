@@ -19,11 +19,14 @@ def main():
     parser.add_argument("--repository", default="MrOz59/Hestia-Android")
     parser.add_argument("--directory", type=Path, required=True,
                         help="Private backup directory outside the repository")
+    parser.add_argument("--generate-only", action="store_true",
+                        help="Create/validate the local key without contacting GitHub")
     args = parser.parse_args()
-    for command in ("keytool", "gh"):
+    for command in (("keytool",) if args.generate_only else ("keytool", "gh")):
         if not shutil.which(command):
             parser.error(f"Install {command} first")
-    subprocess.run(["gh", "auth", "status"], check=True, stdout=subprocess.DEVNULL)
+    if not args.generate_only:
+        subprocess.run(["gh", "auth", "status"], check=True, stdout=subprocess.DEVNULL)
     directory = args.directory.expanduser().resolve()
     checkout = Path(__file__).resolve().parents[1]
     if directory == checkout or checkout in directory.parents:
@@ -55,6 +58,9 @@ def main():
     subprocess.run(["keytool", "-list", "-keystore", str(keystore),
                     "-storepass:env", "HESTIA_KEY_PASSWORD", "-alias", identity["alias"]],
                    check=True, env=env, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
+    if args.generate_only:
+        print("Local signing identity is ready for encrypted backup.")
+        return
     values = {
         "HESTIA_NIGHTLY_KEYSTORE_BASE64": base64.b64encode(keystore.read_bytes()).decode(),
         "HESTIA_NIGHTLY_STORE_PASSWORD": identity["password"],

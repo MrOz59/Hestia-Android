@@ -4,6 +4,12 @@ Public APKs are non-debuggable. Every nightly includes the arm64 PyroWave runtim
 TV UI and normal MediaCodec paths. CI verifies APK signatures, a shared certificate
 across all eight APKs, launcher metadata and the arm64 codec/JNI entry points.
 
+## Setup without a PC
+
+Use the [phone/browser-only setup](android-signing-web.md). It generates the key
+in a manually started default-branch workflow, configures the four signing Secrets
+and starts RC2. The recovery backup is encrypted before upload.
+
 ## Maintainer setup
 
 The existing four `HESTIA_NIGHTLY_*` repository secrets are reused for nightlies
