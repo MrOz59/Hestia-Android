@@ -68,6 +68,7 @@ jobs:
               echo "::error::Unexpected package ID $actual (expected $expected)"
               exit 1
             }
+            bash scripts/check-tv-apk.sh "$aapt" "$apk"
             count=$((count+1))
           done < <(find app/build/outputs/apk -name '*.apk' -type f -print0)
           (( count > 0 )) || { echo "::error::No built APKs found"; exit 1; }

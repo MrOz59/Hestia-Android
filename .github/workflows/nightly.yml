@@ -138,6 +138,7 @@ jobs:
                 exit 1
               fi
               release_version="$actual_version"
+              bash scripts/check-tv-apk.sh "$aapt" "$src"
               cp "$src" "dist/$prefix-$abi.apk"
             done
           done
