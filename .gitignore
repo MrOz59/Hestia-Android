@@ -47,3 +47,10 @@ app/.externalNativeBuild/
 
 # agent files
 AGENTS.md
+# Private signing material and Python intermediates
+*.p12
+*.jks
+*.keystore
+signing.json
+__pycache__/
+*.pyc

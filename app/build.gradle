@@ -130,6 +130,9 @@ android {
         }
         nightly {
             initWith debug
+            // Public APKs retain the nightly identity without exposing a debugger.
+            debuggable false
+            jniDebuggable false
             applicationIdSuffix ".nightly"
             versionNameSuffix "-nightly.${nightlyBuildNumber ?: 'local'}"
             resValue "string", "app_label", "Hestia Nightly"
