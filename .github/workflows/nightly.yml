@@ -52,6 +52,12 @@ jobs:
       # All four secrets must be supplied together to guarantee updates from
       # one nightly to the next. Without secrets, Android uses a runner-local
       # debug key and users may need to uninstall before installing updates.
+      - name: Build PyroWave SDK on the codec branch
+        if: github.ref == 'refs/heads/feature/pyrowave-codec'
+        run: |
+          bash scripts/build-pyrowave-android.sh
+          echo 'ORG_GRADLE_PROJECT_hestiaPyrowave=true' >> "$GITHUB_ENV"
+
       - name: Configure optional persistent signing
         # Do not expose the production-like nightly signing key to feature
         # branch pushes. Only default-branch builds are published.
