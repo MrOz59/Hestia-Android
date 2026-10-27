@@ -57,6 +57,28 @@ public class HestiaAppIdentityTest {
     }
 
     @Test
+    public void keyboardCaptureOnlyUsesWindowScopedPermission() throws Exception {
+        Context context = ApplicationProvider.getApplicationContext();
+        PackageInfo info = context.getPackageManager().getPackageInfo(
+                context.getPackageName(), PackageManager.GET_SERVICES | PackageManager.GET_PERMISSIONS);
+        assertNotNull(info.requestedPermissions);
+        assertTrue("Native capture needs Android's normal window-scoped permission",
+                java.util.Arrays.asList(info.requestedPermissions).contains(
+                        "android.permission.CAPTURE_KEYBOARD"));
+        if (info.services == null) {
+            return;
+        }
+        for (android.content.pm.ServiceInfo service : info.services) {
+            assertNotEquals("Keyboard input must stay within the focused streaming window",
+                    "android.permission.BIND_ACCESSIBILITY_SERVICE", service.permission);
+            assertNotEquals("Hestia does not read other apps' notifications",
+                    "android.permission.BIND_NOTIFICATION_LISTENER_SERVICE", service.permission);
+            assertNotEquals("The legacy accessibility service must be absent",
+                    "com.limelight.KeyboardAccessibilityService", service.name);
+        }
+    }
+
+    @Test
     public void posterProviderAuthorityFollowsApplicationId() throws Exception {
         Context context = ApplicationProvider.getApplicationContext();
         PackageInfo info = context.getPackageManager().getPackageInfo(

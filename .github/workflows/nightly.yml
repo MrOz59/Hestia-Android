@@ -236,6 +236,7 @@ jobs:
           - **Install:** choose the APK matching your Android CPU architecture (usually \`arm64-v8a\`). Root builds are provided separately for legacy rooted devices.
           - **Compatibility:** the same APK supports phones and Android-based TVs. Installs separately from Artemis, Moonlight, and stable Hestia.
           - **PyroWave:** included on arm64-v8a; requires a compatible Vulkan device and a fast LAN. Existing codecs remain available on every ABI.
+          - **Keyboard:** no accessibility service or global screen-reading access. Native shortcut capture is available on Android 16.1+; on older devices some system-reserved shortcuts stay with Android.
           - **Certificate:** the public signing fingerprint is included in \`SIGNING_CERT_SHA256.txt\`.
           - **Warning:** experimental builds may be unstable.
           - **Signing note:** APKs signed with an ephemeral debug key cannot update prior nightlies in place; uninstall the old nightly first. Configure the signing secrets for stable updates.
