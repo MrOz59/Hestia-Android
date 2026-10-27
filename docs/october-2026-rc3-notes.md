@@ -54,9 +54,13 @@ GPU output also require physical-device testing. Sensitive permissions were
 removed, but acceptance by Google Play Protect must be confirmed on devices and
 is not guaranteed by the build or signing checks.
 
-Hermes RC3 is the recommended companion. Hermes-KMS RC1 and Hestia desktop RC1
-remain compatible. Include component versions, device/Android, GPU/driver,
-codec and logs when reporting issues.
+For the full pairing recovery fix, also use a Hermes build containing
+[the companion server update, PR #77](https://github.com/MrOz59/Hermes/pull/77).
+It repairs stale-session replacement, cancellation and session lifetime bugs.
+Existing Hermes RC3 remains compatible, but that immutable release does not
+include the server fix. Hermes-KMS RC1 and Hestia desktop RC1 remain compatible.
+Include component versions, device/Android, GPU/driver, codec and logs when
+reporting issues.
 
 Support is also available on the new [Discord server](https://discord.gg/M5dYFuhjqP).
 Responses may take time because the server is new, the community is small and

@@ -20,6 +20,16 @@ RC3 addresses concrete failure paths found during code review:
   restarted. Certificate/hostname validation failures, malformed replies and an
   explicit pairing rejection remain failures.
 
+## Companion Hermes update
+
+Hermes also had stale-session and lifetime defects: a repeated request could
+reuse the old phase, its HTTP `/unpair` endpoint was missing, and successful
+pairing could access a session after erasing its map entry. Web UI PIN submission
+could also target an entry no longer waiting for a PIN. The companion fix is
+[Hermes PR #77](https://github.com/MrOz59/Hermes/pull/77). Full recovery from stale
+Hermes sessions requires that host update; the existing Hermes RC3 release tag
+is unchanged. The Android changes remain compatible with existing hosts.
+
 PIN verification, server-secret signature verification, pinned server
 certificates and TLS validation are retained. The log identifies handshake
 phases without logging PINs, OTP passphrases, request URLs or certificate/secret
