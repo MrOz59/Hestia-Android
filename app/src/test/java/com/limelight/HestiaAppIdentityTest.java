@@ -41,6 +41,22 @@ public class HestiaAppIdentityTest {
     }
 
     @Test
+    public void mergedManifestDoesNotRequestUnusedPhoneOrStorageAccess() throws Exception {
+        Context context = ApplicationProvider.getApplicationContext();
+        PackageInfo info = context.getPackageManager().getPackageInfo(
+                context.getPackageName(), PackageManager.GET_PERMISSIONS);
+        assertNotNull(info.requestedPermissions);
+        for (String permission : info.requestedPermissions) {
+            assertNotEquals("Phone state access is not used by Hestia",
+                    "android.permission.READ_PHONE_STATE", permission);
+            assertNotEquals("Imports use the Storage Access Framework",
+                    "android.permission.READ_EXTERNAL_STORAGE", permission);
+            assertNotEquals("Exports use the Storage Access Framework",
+                    "android.permission.WRITE_EXTERNAL_STORAGE", permission);
+        }
+    }
+
+    @Test
     public void posterProviderAuthorityFollowsApplicationId() throws Exception {
         Context context = ApplicationProvider.getApplicationContext();
         PackageInfo info = context.getPackageManager().getPackageInfo(

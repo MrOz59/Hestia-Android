@@ -5,6 +5,7 @@ abi="$2"
 certificate_file="$3"
 build_tools="${ANDROID_HOME:?}/build-tools/36.0.0"
 metadata="$("$build_tools/aapt" dump badging "$apk")"
+bash "$(dirname "$0")/check-apk-permissions.sh" "$build_tools/aapt" "$apk"
 if grep -Fq application-debuggable <<< "$metadata"; then
   echo "::error::Public APK must not be debuggable: $apk"
   exit 1
