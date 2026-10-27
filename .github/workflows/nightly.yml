@@ -227,6 +227,7 @@ jobs:
           - **Signing:** \`$SIGNING_MODE\`
           - **Install:** use \`Hestia-Android-nightly-universal.apk\` for phones and Android TVs. It includes 32-bit and 64-bit ARM plus x86 ABIs. The only alternative downloads are the four smaller ABI-specific APKs.
           - **Compatibility:** the same APK supports phones and Android-based TVs, including 32-bit TV systems. OpenGL ES 3.0 is optional for 3D modes; normal 2D streaming uses SurfaceView. Installs separately from Artemis, Moonlight, and stable Hestia.
+          - **Pairing crash fix:** Android 14+ network-discovery callbacks can arrive after pairing pauses discovery. Late callbacks no longer target a terminated executor. This addresses the RC3 crash reported with both universal and arm64 APKs; device retesting is still needed.
           - **PyroWave:** included on arm64-v8a; requires a compatible Vulkan device and a fast LAN. Existing codecs remain available on every ABI.
           - **Keyboard:** no accessibility service or global screen-reading access. Native shortcut capture is available on Android 16.1+; on older devices some system-reserved shortcuts stay with Android.
           - **Certificate:** the public signing fingerprint is included in \`SIGNING_CERT_SHA256.txt\`.
