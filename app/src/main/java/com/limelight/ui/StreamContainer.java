@@ -1,6 +1,8 @@
 package com.limelight.ui;
 
+import android.app.ActivityManager;
 import android.content.Context;
+import android.content.pm.ConfigurationInfo;
 import android.graphics.PixelFormat;
 import android.opengl.GLSurfaceView;
 import android.util.AttributeSet;
@@ -12,9 +14,11 @@ import android.view.inputmethod.BaseInputConnection;
 import android.view.inputmethod.EditorInfo;
 import android.view.inputmethod.InputConnection;
 import android.widget.FrameLayout;
+import android.widget.Toast;
 
 import com.limelight.Game;
 import com.limelight.LimeLog;
+import com.limelight.R;
 import com.limelight.preferences.PreferenceConfiguration;
 import com.limelight.utils.Stereo3DRenderer;
 
@@ -71,7 +75,12 @@ public class StreamContainer extends FrameLayout implements SurfaceHolder.Callba
         this.prefConfig = prefConfig;
         this.renderMode = mapIntToStreamMode(prefConfig.renderMode);
 
-        Stereo3DRenderer.isMovieMode = renderMode == StreamMode.MODE_AI_3D_MOVIE;
+        if (renderMode != StreamMode.MODE_2D && !supportsAdvancedRendering(getContext())) {
+            LimeLog.warning("OpenGL ES 3.0 unavailable; using normal 2D streaming");
+            renderMode = StreamMode.MODE_2D;
+            Toast.makeText(getContext(), R.string.unsupported_3d_rendering,
+                    Toast.LENGTH_LONG).show();
+        }
 
         isSurfaceReady = false;
         mCurrentSurface = null;
@@ -84,6 +93,8 @@ public class StreamContainer extends FrameLayout implements SurfaceHolder.Callba
         addView(mSurfaceView, childParams);
 
         if (renderMode != StreamMode.MODE_2D) {
+            // Keep OpenCV and the 3D renderer out of the normal SurfaceView path.
+            Stereo3DRenderer.isMovieMode = renderMode == StreamMode.MODE_AI_3D_MOVIE;
             GLSurfaceView glSurfaceView = new GLSurfaceView(context);
             glSurfaceView.setEGLContextClientVersion(3);
             mStereoRenderer = new Stereo3DRenderer(glSurfaceView, this, context, prefConfig);
@@ -97,6 +108,12 @@ public class StreamContainer extends FrameLayout implements SurfaceHolder.Callba
         if (mSurfaceView.getHolder().getSurface() != null && mSurfaceView.getHolder().getSurface().isValid()) {
             surfaceChanged(mSurfaceView.getHolder(), PixelFormat.RGBA_8888, mSurfaceView.getWidth(), mSurfaceView.getHeight());
         }
+    }
+
+    static boolean supportsAdvancedRendering(Context context) {
+        ActivityManager manager = (ActivityManager) context.getSystemService(Context.ACTIVITY_SERVICE);
+        ConfigurationInfo info = manager == null ? null : manager.getDeviceConfigurationInfo();
+        return info != null && info.reqGlEsVersion >= 0x00030000;
     }
 
     // --- Aspect Ratio and Scaling Logic ---

@@ -123,7 +123,6 @@ jobs:
           chmod +x gradlew
           ./gradlew --no-daemon \
             :app:assembleNonRoot_gameNightly \
-            :app:assembleRootNightly \
             :app:testNonRoot_gameDebugUnitTest
 
       - name: Verify APK identities, versions, and stage downloads
@@ -136,42 +135,35 @@ jobs:
           mkdir -p dist
           expected_code="$((100000 + GITHUB_RUN_NUMBER))"
           release_version=""
-          for flavor in nonRoot_game root; do
-            if [[ "$flavor" == "root" ]]; then
-              package="com.mroz59.hestia.root.nightly"
-              prefix="Hestia-Android-nightly-root"
-            else
-              package="com.mroz59.hestia.nightly"
-              prefix="Hestia-Android-nightly"
+          package="com.mroz59.hestia.nightly"
+          prefix="Hestia-Android-nightly"
+          for abi in universal arm64-v8a armeabi-v7a x86 x86_64; do
+            src="app/build/outputs/apk/nonRoot_game/nightly/app-nonRoot_game-$abi-nightly.apk"
+            [[ -f "$src" ]] || { echo "::error::Missing APK: $src"; exit 1; }
+            metadata="$("$aapt" dump badging "$src" | sed -n '1p')"
+            actual_package="$(sed -n "s/^package: name='\\([^']*\\)'.*/\\1/p" <<< "$metadata")"
+            actual_code="$(sed -n "s/.*versionCode='\\([^']*\\)'.*/\\1/p" <<< "$metadata")"
+            actual_version="$(sed -n "s/.*versionName='\\([^']*\\)'.*/\\1/p" <<< "$metadata")"
+            [[ "$actual_package" == "$package" && "$actual_code" == "$expected_code" ]] || {
+              echo "::error::Unexpected APK metadata: $metadata"
+              exit 1
+            }
+            [[ "$actual_version" == *"-nightly.$GITHUB_RUN_NUMBER" ]] || {
+              echo "::error::Unexpected nightly version: $actual_version"
+              exit 1
+            }
+            if [[ -n "$release_version" && "$release_version" != "$actual_version" ]]; then
+              echo "::error::Inconsistent nightly versions across ABIs"
+              exit 1
             fi
-            for abi in arm64-v8a armeabi-v7a x86 x86_64; do
-              src="app/build/outputs/apk/$flavor/nightly/app-$flavor-$abi-nightly.apk"
-              [[ -f "$src" ]] || { echo "::error::Missing APK: $src"; exit 1; }
-              metadata="$("$aapt" dump badging "$src" | sed -n '1p')"
-              actual_package="$(sed -n "s/^package: name='\\([^']*\\)'.*/\\1/p" <<< "$metadata")"
-              actual_code="$(sed -n "s/.*versionCode='\\([^']*\\)'.*/\\1/p" <<< "$metadata")"
-              actual_version="$(sed -n "s/.*versionName='\\([^']*\\)'.*/\\1/p" <<< "$metadata")"
-              [[ "$actual_package" == "$package" && "$actual_code" == "$expected_code" ]] || {
-                echo "::error::Unexpected APK metadata: $metadata"
-                exit 1
-              }
-              [[ "$actual_version" == *"-nightly.$GITHUB_RUN_NUMBER" ]] || {
-                echo "::error::Unexpected nightly version: $actual_version"
-                exit 1
-              }
-              if [[ -n "$release_version" && "$release_version" != "$actual_version" ]]; then
-                echo "::error::Inconsistent nightly versions across ABIs"
-                exit 1
-              fi
-              release_version="$actual_version"
-              bash scripts/check-tv-apk.sh "$aapt" "$src"
-              bash scripts/check-public-apk.sh "$src" "$abi" dist/SIGNING_CERT_SHA256.txt
-              cp "$src" "dist/$prefix-$abi.apk"
-            done
+            release_version="$actual_version"
+            bash scripts/check-tv-apk.sh "$aapt" "$src"
+            bash scripts/check-public-apk.sh "$src" "$abi" dist/SIGNING_CERT_SHA256.txt
+            cp "$src" "dist/$prefix-$abi.apk"
           done
           (cd dist && sha256sum ./*.apk SIGNING_CERT_SHA256.txt > SHA256SUMS.txt)
           echo "version=$release_version" >> "$GITHUB_OUTPUT"
-          echo "Verified 8 signed nightly APKs, version $release_version"
+          echo "Verified 5 signed nightly APKs, version $release_version"
           ls -lh dist/
 
       - name: Upload nightly build artifacts
@@ -233,8 +225,8 @@ jobs:
 
           - **Version:** \`$NIGHTLY_VERSION\`
           - **Signing:** \`$SIGNING_MODE\`
-          - **Install:** choose the APK matching your Android CPU architecture (usually \`arm64-v8a\`). Root builds are provided separately for legacy rooted devices.
-          - **Compatibility:** the same APK supports phones and Android-based TVs. Installs separately from Artemis, Moonlight, and stable Hestia.
+          - **Install:** use \`Hestia-Android-nightly-universal.apk\` for phones and Android TVs. It includes 32-bit and 64-bit ARM plus x86 ABIs. The only alternative downloads are the four smaller ABI-specific APKs.
+          - **Compatibility:** the same APK supports phones and Android-based TVs, including 32-bit TV systems. OpenGL ES 3.0 is optional for 3D modes; normal 2D streaming uses SurfaceView. Installs separately from Artemis, Moonlight, and stable Hestia.
           - **PyroWave:** included on arm64-v8a; requires a compatible Vulkan device and a fast LAN. Existing codecs remain available on every ABI.
           - **Keyboard:** no accessibility service or global screen-reading access. Native shortcut capture is available on Android 16.1+; on older devices some system-reserved shortcuts stay with Android.
           - **Certificate:** the public signing fingerprint is included in \`SIGNING_CERT_SHA256.txt\`.

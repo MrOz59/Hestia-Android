@@ -2,7 +2,7 @@
 
 Public APKs are non-debuggable. Every nightly includes the arm64 PyroWave runtime,
 TV UI and normal MediaCodec paths. CI verifies APK signatures, a shared certificate
-across all eight APKs, launcher metadata and the arm64 codec/JNI entry points.
+across the universal APK and four ABI-specific APKs, launcher metadata and the arm64 codec/JNI entry points.
 
 ## Setup without a PC
 

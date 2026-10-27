@@ -8,15 +8,19 @@ monitor alone does not activate the TV interface.
 
 ## Install
 
-1. Download a non-root Hestia APK for the TV device's Android ABI. Most recent
-   devices use `arm64-v8a`, but some TV boxes run 32-bit Android and need
-   `armeabi-v7a`, even with a 64-bit processor. Use the Android ABI, not the
-   processor specification, to choose the download.
+1. Download **Hestia-Android-nightly-universal.apk**, the standard non-root APK
+   for phones and TVs. It includes 32-bit and 64-bit ARM plus x86 libraries.
+   Smaller ABI-specific APKs remain available. If using those, select the
+   Android system ABI, not the CPU specification; some 64-bit CPUs run 32-bit
+   Android and need `armeabi-v7a`.
 2. Install the APK using the device's supported sideloading method. Hestia appears
    in the TV launcher with its Hestia banner.
 3. Connect the TV and Hermes PC to the same LAN. Select the PC and enter the
    displayed pairing PIN in Hermes. If discovery fails, select **Add PC Manually**
    and enter the PC's LAN address.
+
+For installation errors, see [TV package compatibility and diagnosis](android-tv-installation.md).
+OpenGL ES 3.0 is optional; unsupported 3D modes fall back to normal streaming.
 
 The normal Android minimum remains Android 5.0 (API 21). Codec, HDR, controller,
 and performance support depend on the TV's firmware and decoder hardware.

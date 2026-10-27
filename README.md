@@ -4,7 +4,8 @@
 
 The same Hestia APK supports phones, tablets, Android TV, Google TV and compatible
 Fire TV devices, with automatic TV layouts and remote navigation.
-See [installation, controls and hardware testing](docs/android-tv.md).
+Use **Hestia-Android-nightly-universal.apk** to avoid choosing a 32-bit or 64-bit
+variant. See [installation, controls and hardware testing](docs/android-tv.md).
 
 Previously named Moonlight Noir
 

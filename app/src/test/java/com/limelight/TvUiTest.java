@@ -120,6 +120,22 @@ public class TvUiTest {
     }
 
     @Test
+    public void normalStreamingDoesNotRequireOpenGles3ToInstall() throws Exception {
+        PackageInfo info = context.getPackageManager().getPackageInfo(
+                context.getPackageName(), PackageManager.GET_CONFIGURATIONS);
+        assertNotNull(info.reqFeatures);
+        boolean found = false;
+        for (FeatureInfo feature : info.reqFeatures) {
+            if (feature.reqGlEsVersion >= 0x00030000) {
+                assertEquals("OpenGL ES 3 is only needed by optional 3D rendering",
+                        0, feature.flags & FeatureInfo.FLAG_REQUIRED);
+                found = true;
+            }
+        }
+        assertTrue("The optional 3D rendering capability should be declared", found);
+    }
+
+    @Test
     public void tvLayoutsExposeActionsAndReserveSpaceForGameGrid() {
         Context themed = new androidx.appcompat.view.ContextThemeWrapper(context, R.style.AppTheme);
         View pc = LayoutInflater.from(themed).inflate(R.layout.activity_pc_view_tv, null);

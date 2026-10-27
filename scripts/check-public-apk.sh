@@ -30,7 +30,12 @@ else
   printf '%s\n' "$certificate" > "$certificate_file"
 fi
 entries="$(unzip -Z1 "$apk")"
-if [[ "$abi" == arm64-v8a ]]; then
+if [[ "$abi" == universal ]]; then
+  for included_abi in arm64-v8a armeabi-v7a x86 x86_64; do
+    grep -Fxq "lib/$included_abi/libmoonlight-core.so" <<< "$entries"
+  done
+fi
+if [[ "$abi" == arm64-v8a || "$abi" == universal ]]; then
   grep -Fxq 'lib/arm64-v8a/libpyrowave-shared.so' <<< "$entries"
   core="$(mktemp)"
   trap 'rm -f "$core"' EXIT
