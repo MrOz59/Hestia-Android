@@ -69,6 +69,7 @@ jobs:
               exit 1
             }
             bash scripts/check-tv-apk.sh "$aapt" "$apk"
+            bash scripts/check-apk-permissions.sh "$aapt" "$apk"
             count=$((count+1))
           done < <(find app/build/outputs/apk -name '*.apk' -type f -print0)
           (( count > 0 )) || { echo "::error::No built APKs found"; exit 1; }
