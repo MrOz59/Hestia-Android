@@ -838,4 +838,5 @@
     <string name="hestia_prepare_fps_unsupported">Hermes doesn\'t accept %1$d FPS (supported: %2$s). Launching with default settings.</string>
     <string name="hestia_prepare_out_of_range">Hermes can\'t create a %1$d×%2$d virtual display at %3$d%% scale. Launching with default settings.</string>
     <string name="hestia_prepare_failed">Hermes didn\'t accept the session settings: %1$s. Launching with default settings.</string>
+    <string name="unsupported_3d_rendering">3D mode is not supported on this device. Using normal streaming.</string>
 </resources>

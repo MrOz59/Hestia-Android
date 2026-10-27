@@ -21,11 +21,19 @@ class AndroidReleaseTest(unittest.TestCase):
                        GITHUB_RUN_ID='123')
             command = [sys.executable, str(ROOT / 'scripts/write-rc-manifest.py'), str(payload)]
             self.assertNotEqual(0, subprocess.run(command, env=env, capture_output=True).returncode)
-            for index in range(8):
-                (payload / f'fixture-{index}.apk').write_bytes(bytes([index]))
+            names = [f'Hestia-Android-nightly{flavor}-{abi}.apk'
+                     for flavor in ('', '-root')
+                     for abi in ('arm64-v8a', 'armeabi-v7a', 'x86', 'x86_64')]
+            for index, name in enumerate(names):
+                (payload / name).write_bytes(bytes([index]))
+            # A complete ABI set alone is no longer enough: the TV-friendly
+            # universal APK must be included in candidate provenance too.
+            self.assertNotEqual(0, subprocess.run(command, env=env, capture_output=True).returncode)
+            (payload / 'Hestia-Android-nightly-universal.apk').write_bytes(b'universal')
             subprocess.run(command, env=env, check=True)
             manifest = json.loads((payload / 'RC_MANIFEST.json').read_text())
-            self.assertEqual(8, len(manifest['payload_sha256']))
+            self.assertEqual(9, len(manifest['payload_sha256']))
+            self.assertEqual('Hestia-Android-nightly-universal.apk', manifest['recommended_apk'])
             self.assertEqual('persistent', manifest['signing'])
             self.assertEqual('a' * 64, manifest['certificate_sha256'])
             self.assertEqual('arm64-v8a', manifest['pyrowave_abi'])
