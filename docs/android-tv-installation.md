@@ -10,8 +10,10 @@ the TV's architecture.
 Android version and CPU model alone do not establish which ABIs an Android
 system exposes. In particular, a 64-bit-capable CPU can run a 32-bit system.
 If using the smaller APKs, select `armeabi-v7a` for ARM 32-bit Android and
-`arm64-v8a` for a system supporting ARM 64-bit. The root variants are legacy
-builds, not a TV edition; ordinary Android TVs should use the non-root app.
+`arm64-v8a` for a system supporting ARM 64-bit. New public builds contain only the standard app: one universal download and
+four smaller ABI-specific alternatives. Root variants in older releases are
+legacy builds, not a TV edition. Their source and development CI coverage remain
+available, but they are no longer published in the public release assets.
 
 The normal app declares minimum Android API 21 (Android 5.0), has no maximum API
 limit, and includes a Leanback launcher, a TV banner and optional touchscreen

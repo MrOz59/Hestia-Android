@@ -21,8 +21,7 @@ class AndroidReleaseTest(unittest.TestCase):
                        GITHUB_RUN_ID='123')
             command = [sys.executable, str(ROOT / 'scripts/write-rc-manifest.py'), str(payload)]
             self.assertNotEqual(0, subprocess.run(command, env=env, capture_output=True).returncode)
-            names = [f'Hestia-Android-nightly{flavor}-{abi}.apk'
-                     for flavor in ('', '-root')
+            names = [f'Hestia-Android-nightly-{abi}.apk'
                      for abi in ('arm64-v8a', 'armeabi-v7a', 'x86', 'x86_64')]
             for index, name in enumerate(names):
                 (payload / name).write_bytes(bytes([index]))
@@ -32,11 +31,14 @@ class AndroidReleaseTest(unittest.TestCase):
             (payload / 'Hestia-Android-nightly-universal.apk').write_bytes(b'universal')
             subprocess.run(command, env=env, check=True)
             manifest = json.loads((payload / 'RC_MANIFEST.json').read_text())
-            self.assertEqual(9, len(manifest['payload_sha256']))
+            self.assertEqual(5, len(manifest['payload_sha256']))
             self.assertEqual('Hestia-Android-nightly-universal.apk', manifest['recommended_apk'])
             self.assertEqual('persistent', manifest['signing'])
             self.assertEqual('a' * 64, manifest['certificate_sha256'])
             self.assertEqual('arm64-v8a', manifest['pyrowave_abi'])
+            legacy_root = payload / 'Hestia-Android-nightly-root-arm64-v8a.apk'
+            legacy_root.write_bytes(b'legacy root build')
+            self.assertNotEqual(0, subprocess.run(command, env=env, capture_output=True).returncode)
 
     @unittest.skipUnless(shutil.which('keytool'), 'Java keytool required')
     def test_setup_retains_key_across_retries_and_passes_secrets_only_on_stdin(self):
