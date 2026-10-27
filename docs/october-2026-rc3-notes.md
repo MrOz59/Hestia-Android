@@ -1,7 +1,13 @@
-# Hestia Android — October 2026 RC3
+# Hestia Android — October 2026 RC3 (reissued)
 
 A streaming client for Android phones, tablets and TVs, with a universal APK
 and fixes for interrupted or overlapping pairing attempts.
+
+**This replaces the withdrawn RC3.** It includes the Android 14+ pairing crash
+fix tested in nightly 67. The maintainer confirmed that the app starts, pairs
+and connects successfully. If you downloaded the earlier RC3, download this new
+APK again: it has a higher Android version code and the same signing key, so it
+can update the old build without uninstalling.
 
 ## Which APK should I download?
 
@@ -44,6 +50,9 @@ They are verification files, not apps to install.
 
 ## What changed since RC2?
 
+- **Pairing crash fixed:** Android 14+ network-discovery events arriving after
+  discovery stops no longer crash the app when opening pairing. Covered by
+  Android 14/16 regression tests and confirmed on the maintainer's phone.
 - **Universal APK:** one recommended file for phones and TVs, including 32/64-bit
   ARM and x86. Four architecture-specific APKs remain as smaller alternatives.
 - **TV compatibility:** normal 2D streaming no longer requires OpenGL ES 3.0.
@@ -84,9 +93,9 @@ IPv6, first-attempt PIN/OTP pairing, app-list access, streaming and reconnecting
 Controllers, stylus input, normal codecs/HDR and PyroWave SDR also need testing
 where supported.
 
-The affected user's pairing issue still needs confirmation on their hardware
-and network. Physical TV decoder/HDMI and phone GPU behavior also require device
-testing. Sensitive permissions were removed, but **Play Protect acceptance is
+Startup, pairing and connection were confirmed by the maintainer using the
+fixed nightly 67. Broader phone/tablet testing, stylus behavior and physical TV
+decoder/HDMI behavior still need validation. Sensitive permissions were removed, but **Play Protect acceptance is
 not guaranteed** by build or signing checks. If installation or pairing fails,
 include the exact error, APK/version, device/Android, host version and relevant
 logs. Never include PINs, passphrases or private keys.

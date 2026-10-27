@@ -262,6 +262,9 @@ jobs:
     name: Publish persistently signed release candidate
     needs: build
     if: startsWith(github.ref, 'refs/heads/release/october-2026-rc')
+    concurrency:
+      group: hestia-android-candidate-${{ github.ref_name }}
+      cancel-in-progress: false
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -288,15 +291,10 @@ jobs:
           tag="${GITHUB_REF_NAME#release/}"
           [[ "$tag" =~ ^october-2026-rc[0-9]+$ ]]
           test -s "docs/${tag}-notes.md"
-          if gh api "repos/$GITHUB_REPOSITORY/releases/tags/$tag" >/dev/null 2>&1 || git ls-remote --exit-code --tags origin "refs/tags/$tag"; then
-            echo '::error::Candidate already exists; choose the next RC.'
-            exit 1
-          fi
-          current_sha="$(gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/$GITHUB_REF_NAME" --jq .object.sha)"
-          test "$current_sha" = "$GITHUB_SHA"
           export RC_TAG="$tag"
           python3 scripts/write-rc-manifest.py dist
           (cd dist && sha256sum ./*.apk SIGNING_CERT_SHA256.txt RC_MANIFEST.json > SHA256SUMS.txt)
+          python3 scripts/prepare-rc-tag.py
           printf 'RC_TAG=%s\nRC_NOTES=docs/%s-notes.md\n' "$tag" "$tag" >> "$GITHUB_ENV"
       - name: Publish verified candidate
         env:

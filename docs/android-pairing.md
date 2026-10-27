@@ -41,8 +41,9 @@ Regression tests run on Android 14/API 34 and Android 16/API 36. They submit
 framework callbacks after confirmed worker termination, race close against
 submission, delay queued callbacks and exercise a real native agent inside the
 fallback wrapper across pairing-style pause/resume. This fixes the reported
-client crash independently of the companion Hermes update below. Physical-device
-retesting remains necessary.
+client crash independently of the companion Hermes update below. The maintainer
+confirmed startup, pairing and connection on the fixed nightly 67 before
+authorizing the reissued RC3. Broader device/network testing remains necessary.
 
 ## Companion Hermes update
 
