@@ -10,7 +10,8 @@ RC3 addresses concrete failure paths found during code review:
 - Repeated taps could create overlapping handshakes sharing the same client
   identity and PIN dialog. Pairing is now limited to one active UI operation,
   including across activity recreation, and lifecycle/menu callbacks do not
-  restart host polling during it.
+  restart host polling during it. The initial PIN wait has a three-minute total
+  timeout, so abandoning a PIN dialog cannot block pairing indefinitely.
 - Pairing commands use GET but change server state. Automatic connection retries
   and redirects are disabled for those commands, so a lost response does not
   silently replay a challenge or resend pairing material elsewhere.
