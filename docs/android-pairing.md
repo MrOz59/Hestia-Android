@@ -21,6 +21,29 @@ RC3 addresses concrete failure paths found during code review:
   restarted. Certificate/hostname validation failures, malformed replies and an
   explicit pairing rejection remain failures.
 
+## Android NSD crash when opening pairing (after RC3)
+
+A device crash report identified `RejectedExecutionException` in Android's
+`NsdManager.ServiceHandler`: the framework dispatched a service-info callback
+onto an already terminated worker. On Android 14+, pausing discovery for pairing
+closes the native agent through `FallbackDiscoveryAgent`. Unregistration is
+asynchronous, so the framework can still dispatch an update or its unregistration
+notification after the worker shuts down. Both universal and ABI-specific RC3
+APKs use this same code and are affected.
+
+The fix passes Android a lifecycle-aware executor that serializes submissions
+with close and drops dispatches arriving after close. The actual worker still
+shuts down. Queued callbacks and delayed discovery/registration callbacks also
+check session identity, so stopped agents cannot publish hosts or trigger a
+fallback in a resumed session. Late discovery-start cleanup is best-effort.
+
+Regression tests run on Android 14/API 34 and Android 16/API 36. They submit
+framework callbacks after confirmed worker termination, race close against
+submission, delay queued callbacks and exercise a real native agent inside the
+fallback wrapper across pairing-style pause/resume. This fixes the reported
+client crash independently of the companion Hermes update below. Physical-device
+retesting remains necessary.
+
 ## Companion Hermes update
 
 Hermes also had stale-session and lifetime defects: a repeated request could
