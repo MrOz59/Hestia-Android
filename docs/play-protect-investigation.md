@@ -5,7 +5,8 @@ Issue: [#16](https://github.com/MrOz59/Hestia-Android/issues/16).
 This investigation compares downloaded release APKs, not only source manifests.
 It identifies excess permissions in Hestia RC2; it does **not** establish the
 reason for Google's classification or demonstrate that a new build is accepted.
-The exact Play Protect warning and a real-device retest remain necessary.
+The warning category is now known from the user's screenshot (see below).
+A real-device retest of a new build remains necessary.
 
 ## Published APK comparison
 
@@ -29,7 +30,8 @@ permissions, including compatibility permissions when their target SDK is old.
 The manifest merger report should be used to identify the exact dependency;
 the APK comparison alone cannot identify it.
 
-Hestia does not request or use phone-state access. Profile files are app-private;
+Hestia's application code does not request these runtime permissions or use
+APIs requiring phone-state permission. Profile files are app-private;
 user-selected document imports/exports use the Storage Access Framework.
 Explicit manifest removal rules now exclude these three permissions. CI checks
 both the merged manifest and every packaged APK so dependency updates cannot
@@ -38,15 +40,55 @@ silently reintroduce them. Nightly artifacts also retain manifest merger reports
 Artemis and Hestia both declare keyboard accessibility with window-content
 retrieval and interactive-window flags; their implementation forwards keys only
 while streaming. This is shared inherited behavior, not a difference explaining
-why one APK is accepted on a particular device. It merits a separate review of
-minimum privileges. The service is retained in this change to avoid changing
-keyboard behavior during permission diagnosis.
+why one APK is accepted on a particular device. The first permission cleanup retained this service while awaiting the exact
+warning. The subsequent change below removes it entirely.
 
 All three certificates are self-signed and all three APKs have v1/v2 signature
 blocks. Hestia's RC2 certificate is permanent but newly created. An unknown-app
 classification is possible; certificate age alone does not prove reputation or
 explain a malware verdict. Do not rotate the signing key, copy another app's
 package identity, or disable Play Protect as a fix.
+
+## Confirmed warning category and focused keyboard capture
+
+The user supplied a screenshot with the heading "O app foi bloqueado para
+proteger seu dispositivo" and text stating that the app can request sensitive
+data and increase the risk of identity theft or financial fraud. This matches
+Google's **App blocked to protect your device** guidance for internet-sideloaded
+apps declaring high-risk permissions, including accessibility. It is a different
+prompt from the harmful-app or unknown-app scan prompts. The screenshot identifies
+Hestia Nightly but does not show its embedded build number.
+
+Neither RC2 nor nightly.53 declares SMS reception/reading or a notification-listener
+service. Both still declare the inherited keyboard accessibility service. This
+makes accessibility the relevant declared capability for this documented warning;
+the screenshot alone is not a complete malware assessment or a server-side verdict.
+
+The new build removes the accessibility service, its implementation, its XML
+configuration and its unused descriptions from every flavor. No disabled or
+alternate accessibility service remains in the APK. CI now checks the **packaged**
+manifest for accessibility/notification-listener declarations and SMS permissions,
+in addition to checking for the unused phone/storage permissions.
+
+Keyboard shortcuts now use Android's public window-scoped
+`WindowManager.LayoutParams.setKeyboardCaptureEnabled` when that API is available
+(Android 16.1 / API 36.1 and later). `CAPTURE_KEYBOARD` is a **normal** permission;
+Android delivers keys only to the focused app, retains reserved system actions,
+and allows users to escape capture. The method is resolved reflectively as a
+forward-compatible public API so Hestia can continue compiling against API 36.
+The existing input-grab toggle enables/disables this capture. Android 16.0 and
+older versions safely retain the existing Samsung-specific fallback where
+supported, plus ordinary keyboard, touch, mouse, controller and TV-remote input.
+
+Tradeoff: on older/non-supporting Android devices, shortcuts intercepted by the
+OS can no longer be forwarded using a global accessibility service. This is a
+real capability removal, not a renamed service or a request to disable device
+protection. The app no longer needs users to enable accessibility access.
+
+The new APK keeps Hestia's identity and permanent signing key, and receives a
+higher Nightly version code. The published RC2 and nightly.53 remain unchanged.
+A successful build proves the restricted declarations are absent; acceptance by
+Play Protect must still be confirmed on the affected device.
 
 ## Evidence for the unchanged RC2 APK
 
