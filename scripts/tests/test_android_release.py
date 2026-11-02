@@ -40,6 +40,30 @@ class AndroidReleaseTest(unittest.TestCase):
             legacy_root.write_bytes(b'legacy root build')
             self.assertNotEqual(0, subprocess.run(command, env=env, capture_output=True).returncode)
 
+    def test_stable_manifest_names_the_release_apks_and_tag(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            payload = Path(temporary)
+            (payload / 'SIGNING_CERT_SHA256.txt').write_text('a' * 64 + '\n')
+            env = dict(os.environ, RELEASE_TAG='v0.7.0', GITHUB_SHA='b' * 40,
+                       BUILD_VERSION='0.7.0', GITHUB_REPOSITORY='MrOz59/Hestia-Android',
+                       GITHUB_RUN_ID='123')
+            env.pop('RC_TAG', None)
+            command = [sys.executable, str(ROOT / 'scripts/write-rc-manifest.py'), str(payload),
+                       '--apk-prefix', 'Hestia-Android-nonRoot', '--output', 'RELEASE_MANIFEST.json']
+            # Nightly APKs are not a stable payload.
+            for abi in ('universal', 'arm64-v8a', 'armeabi-v7a', 'x86', 'x86_64'):
+                (payload / f'Hestia-Android-nightly-{abi}.apk').write_bytes(abi.encode())
+            self.assertNotEqual(0, subprocess.run(command, env=env, capture_output=True).returncode)
+            for apk in payload.glob('Hestia-Android-nightly-*.apk'):
+                apk.rename(payload / apk.name.replace('-nightly-', '-nonRoot-'))
+            subprocess.run(command, env=env, check=True)
+            manifest = json.loads((payload / 'RELEASE_MANIFEST.json').read_text())
+            self.assertEqual('v0.7.0', manifest['tag'])
+            self.assertEqual('0.7.0', manifest['build_version'])
+            self.assertEqual('Hestia-Android-nonRoot-universal.apk', manifest['recommended_apk'])
+            self.assertEqual(5, len(manifest['payload_sha256']))
+            self.assertFalse((payload / 'RC_MANIFEST.json').exists())
+
     @unittest.skipUnless(shutil.which('keytool'), 'Java keytool required')
     def test_setup_retains_key_across_retries_and_passes_secrets_only_on_stdin(self):
         with tempfile.TemporaryDirectory() as temporary:

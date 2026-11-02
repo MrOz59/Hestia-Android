@@ -1,7 +1,13 @@
 name: Hestia Android Nightly
 
 # Each push builds installable APKs. A merge into the default branch is a
-# push, so only validated default-branch builds are published as releases.
+# push, so only validated default-branch builds are published as nightlies.
+#
+# release/<month>-<year>-rc<n> branches publish a release candidate from the
+# same nightly build, and release/v<major>.<minor>.<patch> branches build stable
+# Hestia (com.mroz59.hestia) and publish it as the latest release. See
+# docs/android-release.md. Stable releases stay in this workflow so their
+# version codes keep counting up with the nightlies' run number.
 on:
   push:
     branches:
@@ -11,9 +17,15 @@ on:
 permissions:
   contents: read
 
+env:
+  # The default branch and release/* branches are trusted maintainer branches:
+  # their builds use the persistent signing key. Every other branch builds with
+  # a temporary test key, so the permanent key is never exposed to it.
+  HESTIA_PERSISTENT_SIGNING: ${{ github.ref == 'refs/heads/moonlight-noir' || startsWith(github.ref, 'refs/heads/release/') }}
+
 jobs:
   build:
-    name: Build and test nightly APKs
+    name: Build and test APKs
     runs-on: ubuntu-latest
     timeout-minutes: 50
     permissions:
@@ -21,10 +33,47 @@ jobs:
     outputs:
       version: ${{ steps.verify.outputs.version }}
       signing: ${{ steps.signing.outputs.mode }}
+      channel: ${{ steps.channel.outputs.channel }}
+      release_version: ${{ steps.channel.outputs.release_version }}
+      artifact: Hestia-Android-${{ steps.channel.outputs.channel }}-${{ github.run_number }}
     steps:
       - uses: actions/checkout@v5
         with:
           submodules: recursive
+
+      # A release/v<version> branch builds stable Hestia; everything else builds
+      # the nightly variant. A version with a suffix (release/v0.7.0-test) is a
+      # dry run: it builds and signs stable APKs but does not publish them.
+      - name: Select the build channel
+        id: channel
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "$GITHUB_REF" == refs/heads/release/v* ]]; then
+            version="${GITHUB_REF_NAME#release/v}"
+            if [[ ! "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+([-+][0-9A-Za-z.-]+)?$ ]]; then
+              echo "::error::Name a stable release branch release/v<major>.<minor>.<patch>, for example release/v0.7.0 (got $GITHUB_REF_NAME)."
+              exit 1
+            fi
+            {
+              echo "channel=stable"
+              echo "release_version=$version"
+              echo "task=:app:assembleNonRoot_gameRelease"
+              echo "package=com.mroz59.hestia"
+              echo "apk_type=release"
+              echo "prefix=Hestia-Android-nonRoot"
+            } >> "$GITHUB_OUTPUT"
+            echo "Stable Hestia Android $version"
+          else
+            {
+              echo "channel=nightly"
+              echo "release_version="
+              echo "task=:app:assembleNonRoot_gameNightly"
+              echo "package=com.mroz59.hestia.nightly"
+              echo "apk_type=nightly"
+              echo "prefix=Hestia-Android-nightly"
+            } >> "$GITHUB_OUTPUT"
+          fi
 
       - uses: actions/setup-java@v5
         with:
@@ -59,8 +108,8 @@ jobs:
 
       - name: Configure optional persistent signing
         # Do not expose the production-like nightly signing key to feature
-        # branch pushes. Only default-branch builds are published.
-        if: github.ref == 'refs/heads/moonlight-noir' || startsWith(github.ref, 'refs/heads/release/october-2026-rc')
+        # branch pushes. Only default-branch and release/* builds are published.
+        if: env.HESTIA_PERSISTENT_SIGNING == 'true'
         id: signing
         shell: bash
         env:
@@ -89,11 +138,19 @@ jobs:
             echo "mode=stable" >> "$GITHUB_OUTPUT"
           fi
 
+      # Stable Hestia keeps one signing identity for life: an APK signed with
+      # another key cannot update it.
+      - name: Require the persistent key for a stable release
+        if: steps.channel.outputs.channel == 'stable' && steps.signing.outputs.mode != 'stable'
+        run: |
+          echo '::error::A stable release must be signed with the persistent key. Set the four HESTIA_NIGHTLY_* secrets (docs/android-signing.md).'
+          exit 1
+
       - name: Test release preparation and signing setup tools
         run: python3 -m unittest discover -s scripts/tests -p 'test_android_release.py'
 
       - name: Exercise custom signing with a temporary test key on feature branches
-        if: github.ref != 'refs/heads/moonlight-noir' && !startsWith(github.ref, 'refs/heads/release/october-2026-rc')
+        if: env.HESTIA_PERSISTENT_SIGNING != 'true'
         shell: bash
         run: |
           set -euo pipefail
@@ -112,22 +169,30 @@ jobs:
           echo "HESTIA_TEST_SIGNING_ALIAS=hestia-test" >> "$GITHUB_ENV"
           echo "HESTIA_NIGHTLY_KEYSTORE_PATH=$RUNNER_TEMP/hestia-nightly.p12" >> "$GITHUB_ENV"
 
-      - name: Build nightly variants and run JVM tests
+      - name: Build APKs and run JVM tests
         shell: bash
         env:
+          BUILD_TASK: ${{ steps.channel.outputs.task }}
           HESTIA_NIGHTLY_BUILD_NUMBER: ${{ github.run_number }}
-          HESTIA_NIGHTLY_STORE_PASSWORD: ${{ (github.ref == 'refs/heads/moonlight-noir' || startsWith(github.ref, 'refs/heads/release/october-2026-rc')) && secrets.HESTIA_NIGHTLY_STORE_PASSWORD || env.HESTIA_TEST_SIGNING_PASSWORD || '' }}
-          HESTIA_NIGHTLY_KEY_ALIAS: ${{ (github.ref == 'refs/heads/moonlight-noir' || startsWith(github.ref, 'refs/heads/release/october-2026-rc')) && secrets.HESTIA_NIGHTLY_KEY_ALIAS || env.HESTIA_TEST_SIGNING_ALIAS || '' }}
-          HESTIA_NIGHTLY_KEY_PASSWORD: ${{ (github.ref == 'refs/heads/moonlight-noir' || startsWith(github.ref, 'refs/heads/release/october-2026-rc')) && secrets.HESTIA_NIGHTLY_KEY_PASSWORD || env.HESTIA_TEST_SIGNING_PASSWORD || '' }}
+          HESTIA_RELEASE_VERSION: ${{ steps.channel.outputs.release_version }}
+          HESTIA_NIGHTLY_STORE_PASSWORD: ${{ env.HESTIA_PERSISTENT_SIGNING == 'true' && secrets.HESTIA_NIGHTLY_STORE_PASSWORD || env.HESTIA_TEST_SIGNING_PASSWORD || '' }}
+          HESTIA_NIGHTLY_KEY_ALIAS: ${{ env.HESTIA_PERSISTENT_SIGNING == 'true' && secrets.HESTIA_NIGHTLY_KEY_ALIAS || env.HESTIA_TEST_SIGNING_ALIAS || '' }}
+          HESTIA_NIGHTLY_KEY_PASSWORD: ${{ env.HESTIA_PERSISTENT_SIGNING == 'true' && secrets.HESTIA_NIGHTLY_KEY_PASSWORD || env.HESTIA_TEST_SIGNING_PASSWORD || '' }}
         run: |
           chmod +x gradlew
           ./gradlew --no-daemon \
-            :app:assembleNonRoot_gameNightly \
+            "$BUILD_TASK" \
             :app:testNonRoot_gameDebugUnitTest
 
       - name: Verify APK identities, versions, and stage downloads
         id: verify
         shell: bash
+        env:
+          CHANNEL: ${{ steps.channel.outputs.channel }}
+          RELEASE_VERSION: ${{ steps.channel.outputs.release_version }}
+          PACKAGE: ${{ steps.channel.outputs.package }}
+          APK_TYPE: ${{ steps.channel.outputs.apk_type }}
+          PREFIX: ${{ steps.channel.outputs.prefix }}
         run: |
           set -euo pipefail
           aapt="$ANDROID_HOME/build-tools/36.0.0/aapt"
@@ -135,41 +200,46 @@ jobs:
           mkdir -p dist
           expected_code="$((100000 + GITHUB_RUN_NUMBER))"
           release_version=""
-          package="com.mroz59.hestia.nightly"
-          prefix="Hestia-Android-nightly"
           for abi in universal arm64-v8a armeabi-v7a x86 x86_64; do
-            src="app/build/outputs/apk/nonRoot_game/nightly/app-nonRoot_game-$abi-nightly.apk"
+            src="app/build/outputs/apk/nonRoot_game/$APK_TYPE/app-nonRoot_game-$abi-$APK_TYPE.apk"
             [[ -f "$src" ]] || { echo "::error::Missing APK: $src"; exit 1; }
             metadata="$("$aapt" dump badging "$src" | sed -n '1p')"
             actual_package="$(sed -n "s/^package: name='\\([^']*\\)'.*/\\1/p" <<< "$metadata")"
             actual_code="$(sed -n "s/.*versionCode='\\([^']*\\)'.*/\\1/p" <<< "$metadata")"
             actual_version="$(sed -n "s/.*versionName='\\([^']*\\)'.*/\\1/p" <<< "$metadata")"
-            [[ "$actual_package" == "$package" && "$actual_code" == "$expected_code" ]] || {
+            [[ "$actual_package" == "$PACKAGE" && "$actual_code" == "$expected_code" ]] || {
               echo "::error::Unexpected APK metadata: $metadata"
               exit 1
             }
-            [[ "$actual_version" == *"-nightly.$GITHUB_RUN_NUMBER" ]] || {
-              echo "::error::Unexpected nightly version: $actual_version"
-              exit 1
-            }
+            if [[ "$CHANNEL" == stable ]]; then
+              [[ "$actual_version" == "$RELEASE_VERSION" ]] || {
+                echo "::error::Unexpected stable version: $actual_version (expected $RELEASE_VERSION)"
+                exit 1
+              }
+            else
+              [[ "$actual_version" == *"-nightly.$GITHUB_RUN_NUMBER" ]] || {
+                echo "::error::Unexpected nightly version: $actual_version"
+                exit 1
+              }
+            fi
             if [[ -n "$release_version" && "$release_version" != "$actual_version" ]]; then
-              echo "::error::Inconsistent nightly versions across ABIs"
+              echo "::error::Inconsistent $CHANNEL versions across ABIs"
               exit 1
             fi
             release_version="$actual_version"
             bash scripts/check-tv-apk.sh "$aapt" "$src"
             bash scripts/check-public-apk.sh "$src" "$abi" dist/SIGNING_CERT_SHA256.txt
-            cp "$src" "dist/$prefix-$abi.apk"
+            cp "$src" "dist/$PREFIX-$abi.apk"
           done
           (cd dist && sha256sum ./*.apk SIGNING_CERT_SHA256.txt > SHA256SUMS.txt)
           echo "version=$release_version" >> "$GITHUB_OUTPUT"
-          echo "Verified 5 signed nightly APKs, version $release_version"
+          echo "Verified 5 signed $CHANNEL APKs, version $release_version"
           ls -lh dist/
 
-      - name: Upload nightly build artifacts
+      - name: Upload build artifacts
         uses: actions/upload-artifact@v6
         with:
-          name: Hestia-Android-nightly-${{ github.run_number }}
+          name: Hestia-Android-${{ steps.channel.outputs.channel }}-${{ github.run_number }}
           path: dist/*
           if-no-files-found: error
           retention-days: 14
@@ -261,7 +331,7 @@ jobs:
   release-candidate:
     name: Publish persistently signed release candidate
     needs: build
-    if: startsWith(github.ref, 'refs/heads/release/october-2026-rc')
+    if: startsWith(github.ref, 'refs/heads/release/') && !startsWith(github.ref, 'refs/heads/release/v') && contains(github.ref_name, '-rc')
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -286,7 +356,10 @@ jobs:
         run: |
           set -euo pipefail
           tag="${GITHUB_REF_NAME#release/}"
-          [[ "$tag" =~ ^october-2026-rc[0-9]+$ ]]
+          [[ "$tag" =~ ^[a-z]+-[0-9]{4}-rc[0-9]+$ ]] || {
+            echo "::error::Name a release candidate branch release/<month>-<year>-rc<n>, for example release/october-2026-rc6 (got $GITHUB_REF_NAME)."
+            exit 1
+          }
           test -s "docs/${tag}-notes.md"
           if gh api "repos/$GITHUB_REPOSITORY/releases/tags/$tag" >/dev/null 2>&1 || git ls-remote --exit-code --tags origin "refs/tags/$tag"; then
             echo '::error::Candidate already exists; choose the next RC.'
@@ -305,3 +378,94 @@ jobs:
           gh release create "$RC_TAG" dist/* --repo "$GITHUB_REPOSITORY" \
             --target "$GITHUB_SHA" --prerelease \
             --title "Hestia Android — $RC_TAG" --notes-file "$RC_NOTES"
+
+  release:
+    name: Publish stable release
+    needs: build
+    if: startsWith(github.ref, 'refs/heads/release/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      VERSION: ${{ needs.build.outputs.release_version }}
+    steps:
+      - name: Publish only release/v<major>.<minor>.<patch>
+        id: tag
+        shell: bash
+        env:
+          ARTIFACT: ${{ needs.build.outputs.artifact }}
+        run: |
+          set -euo pipefail
+          if [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "publish=true" >> "$GITHUB_OUTPUT"
+            echo "RELEASE_TAG=v$VERSION" >> "$GITHUB_ENV"
+          else
+            echo "publish=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::$GITHUB_REF_NAME is a dry run: only release/v<major>.<minor>.<patch> publishes. The signed stable APKs are in this run's $ARTIFACT artifact."
+          fi
+
+      - name: Require persistent signing before publishing
+        if: steps.tag.outputs.publish == 'true' && needs.build.outputs.signing != 'stable'
+        run: |
+          echo '::error::A stable release requires the four HESTIA_NIGHTLY_* signing secrets. See docs/android-signing.md.'
+          exit 1
+
+      - uses: actions/checkout@v5
+        if: steps.tag.outputs.publish == 'true'
+
+      - uses: actions/download-artifact@v6
+        if: steps.tag.outputs.publish == 'true'
+        with:
+          name: ${{ needs.build.outputs.artifact }}
+          path: dist
+
+      - name: Prepare the release manifest and notes
+        if: steps.tag.outputs.publish == 'true'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BUILD_VERSION: ${{ needs.build.outputs.version }}
+        run: |
+          set -euo pipefail
+          if gh api "repos/$GITHUB_REPOSITORY/releases/tags/$RELEASE_TAG" >/dev/null 2>&1 || git ls-remote --exit-code --tags origin "refs/tags/$RELEASE_TAG" >/dev/null; then
+            echo "::error::$RELEASE_TAG already exists. Release the next version from a new release/v<version> branch."
+            exit 1
+          fi
+          current_sha="$(gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/$GITHUB_REF_NAME" --jq .object.sha)"
+          if [[ "$current_sha" != "$GITHUB_SHA" ]]; then
+            echo "::error::$GITHUB_REF_NAME moved on after this build; the run for its newest commit publishes the release."
+            exit 1
+          fi
+          python3 scripts/write-rc-manifest.py dist --apk-prefix Hestia-Android-nonRoot --output RELEASE_MANIFEST.json
+          (cd dist && sha256sum ./*.apk SIGNING_CERT_SHA256.txt RELEASE_MANIFEST.json > SHA256SUMS.txt)
+
+          # docs/v<version>-notes.md, when present, is the whole release text.
+          notes="docs/${RELEASE_TAG}-notes.md"
+          if [[ -s "$notes" ]]; then
+            cp "$notes" "$RUNNER_TEMP/release-notes.md"
+            exit 0
+          fi
+          previous="$(git ls-remote --tags --refs origin 'refs/tags/v*' | sed 's|.*refs/tags/||' \
+            | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | sort -V | tail -n 1 || true)"
+          cat > "$RUNNER_TEMP/release-notes.md" <<EOF
+          Hestia Android $VERSION, built from commit \`$GITHUB_SHA\`.
+
+          - **Install:** \`Hestia-Android-nonRoot-universal.apk\` works on every Android phone, tablet and TV, 32-bit or 64-bit. The four \`Hestia-Android-nonRoot-<abi>.apk\` files are smaller alternatives for a single architecture.
+          - **Package:** \`com.mroz59.hestia\`, shown as "Hestia". It installs next to Hestia Nightly, Artemis and Moonlight, and keeps its own paired PCs and settings.
+          - **Updates:** every stable release is signed with the same key and updates the previous one in place. The certificate fingerprint is in \`SIGNING_CERT_SHA256.txt\`.
+          - **PyroWave:** included on arm64-v8a; it needs a compatible Vulkan device and a fast LAN. The existing codecs work on every ABI.
+          - **Verification:** \`SHA256SUMS.txt\` lists the checksums, and \`RELEASE_MANIFEST.json\` records the source commit, workflow run and APK hashes.
+          EOF
+          if [[ -n "$previous" ]]; then
+            printf '\n**Full changes:** https://github.com/%s/compare/%s...%s\n' \
+              "$GITHUB_REPOSITORY" "$previous" "$RELEASE_TAG" >> "$RUNNER_TEMP/release-notes.md"
+          fi
+
+      - name: Publish the stable release
+        if: steps.tag.outputs.publish == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$RELEASE_TAG" dist/* --repo "$GITHUB_REPOSITORY" \
+            --target "$GITHUB_SHA" --latest \
+            --title "Hestia Android $VERSION" --notes-file "$RUNNER_TEMP/release-notes.md"

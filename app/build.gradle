@@ -2,8 +2,13 @@ apply plugin: 'com.android.application'
 
 // This override is only supplied by the automated nightly workflow.
 // It gives consecutive nightlies increasing versions for in-place upgrades.
+// Stable releases are built by the same workflow, so they share the counter.
 def nightlyBuildNumber = System.getenv("HESTIA_NIGHTLY_BUILD_NUMBER")
 def nightlyVersionCode = nightlyBuildNumber ? 100000 + Integer.parseInt(nightlyBuildNumber) : null
+
+// The version of a stable release, taken from its release/v<version> branch by
+// the workflow. Unset for every other build.
+def releaseVersion = System.getenv("HESTIA_RELEASE_VERSION") ?: null
 
 android {
     ndkVersion "27.0.12077973"
@@ -21,7 +26,7 @@ android {
         }
         targetSdk 34
 
-        versionName "20.2.6"
+        versionName releaseVersion ?: "20.2.6"
         versionCode = nightlyVersionCode != null ? nightlyVersionCode : 57
 
         // Generate native debug symbols to allow Google Play to symbolicate our native crashes
@@ -106,8 +111,10 @@ android {
 
     signingConfigs {
         // When a persistent signing key is configured in GitHub Actions,
-        // use it for nightlies. Otherwise the cloned debug config is used,
-        // which is valid for installation but may change between CI runners.
+        // use it for nightlies, release candidates and stable releases.
+        // Otherwise nightlies use the cloned debug config, which is valid for
+        // installation but may change between CI runners, and a release build
+        // stays unsigned.
         if (System.getenv("HESTIA_NIGHTLY_KEYSTORE_PATH")) {
             nightly {
                 storeFile file(System.getenv("HESTIA_NIGHTLY_KEYSTORE_PATH"))
@@ -152,6 +159,12 @@ android {
 
             minifyEnabled true
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
+
+            // Stable Hestia is signed with the same persistent key as the
+            // nightlies. Its package differs, so the two never update each other.
+            if (System.getenv("HESTIA_NIGHTLY_KEYSTORE_PATH")) {
+                signingConfig signingConfigs.nightly
+            }
         }
     }
 
