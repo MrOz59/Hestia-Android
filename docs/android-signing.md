@@ -12,9 +12,10 @@ and starts RC2. The recovery backup is encrypted before upload.
 
 ## Maintainer setup
 
-The existing four `HESTIA_NIGHTLY_*` repository secrets are reused for nightlies
-and RCs. The private key is exposed only on the default branch and the controlled
-`release/october-2026-rc*` branches; feature and PR builds use temporary test keys. Feature builds also exercise the
+The existing four `HESTIA_NIGHTLY_*` repository secrets are reused for nightlies,
+RCs and stable releases ([Releasing](android-release.md)). The private key is
+exposed only on the default branch and the controlled `release/*` branches
+(release candidates and stable releases); feature and PR builds use temporary test keys. Feature builds also exercise the
 custom keystore path and verify the APK signer against that temporary certificate,
 without exposing the permanent key.
 Creating or updating those release branches is a trusted maintainer operation.

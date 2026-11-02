@@ -55,6 +55,6 @@ Set **all four** secrets together; the workflow fails if only some are present, 
 
 - Every push on any branch runs the build; a pull request does not directly create a public release.
 - Each merged/default-branch build creates one prerelease, with a fresh numeric nightly version.
-- Nightlies do **not** replace stable releases, and are intentionally debuggable for development.
+- Nightlies do **not** replace stable releases, and are intentionally debuggable for development. Stable releases come from `release/v<version>` branches; see [Releasing Hestia Android](android-release.md).
 - Version numbers derive from the workflow run number (Android `versionCode = 100000 + run_number`). Avoid renaming/recreating the workflow without reviewing version-code monotonicity.
 - To follow nightlies in Obtainium, point it at this repository and **enable prereleases**; filter for `Hestia-Android-nightly-arm64-v8a.apk` on typical devices. The nightly tag is `v<base version>-nightly.<run number>`.
