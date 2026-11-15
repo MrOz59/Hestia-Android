@@ -1429,14 +1429,21 @@ public class MediaCodecDecoderRenderer extends VideoDecoderRenderer implements C
                                         if (shouldDrop) {
                                             if (preferLowerDelays) {
                                                 // ULL: present at next VSYNC (no scheduling)
-                                                releaseWithPolicy(lastIndex, System.nanoTime());} else {
+                                                // Note: this renders the "late" frame rather than dropping
+                                                // it, so the diagnostics count it as a release.
+                                                if (releaseWithPolicy(lastIndex, System.nanoTime())) {
+                                                    pacingDiag.released(PacingDiag.PATH_DIRECT, presentationTimeUs, outputBufferQueue.size());
+                                                } else {
+                                                    pacingDiag.releaseFailed();
+                                                }
+                                            } else {
                                                 // Smooth/Balanced: keep timestamp scheduling
                                                 videoDecoder.releaseOutputBuffer(lastIndex, /* render */ false);
+                                                pacingDiag.lateDrop();
                                             }
 
                                             frameDropped = true;
                                             lastDropNs = nowNs;
-                                            pacingDiag.lateDrop();
                                             recentDrops = Math.min(10, recentDrops + 1);
                                             continue; // niente stats sui frame droppati
                                         }
