@@ -121,6 +121,13 @@ final class PacingDiag {
         }
     }
 
+    /** A queued buffer was discarded because the queue was full. Clears its slot. */
+    void dropQueued(int bufferIndex) {
+        if (bufferIndex >= 0 && bufferIndex < PTS_SLOTS) {
+            ptsByIndex.set(bufferIndex, -1);
+        }
+    }
+
     /**
      * Take the PTS recorded for a queued buffer and clear its slot, or -1 if unknown.
      * Call this when the buffer leaves the queue, BEFORE releasing it to the codec:

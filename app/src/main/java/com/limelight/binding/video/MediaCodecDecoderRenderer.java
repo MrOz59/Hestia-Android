@@ -1495,13 +1495,17 @@ public class MediaCodecDecoderRenderer extends VideoDecoderRenderer implements C
                                 // NB: We have to do this on the producer side because the consumer may not
                                 // run for a while (if there is a huge mismatch between stream FPS and display
                                 // refresh rate).
-                                if (outputBufferQueue.size() == OUTPUT_BUFFER_QUEUE_LIMIT) {
-                                    try {
-                                        videoDecoder.releaseOutputBuffer(outputBufferQueue.take(), false);
+                                //
+                                // poll() rather than take(): the Choreographer can drain the queue between
+                                // the size check and the removal, and take() would then block this thread,
+                                // the only producer, until the stream is stopped.
+                                if (outputBufferQueue.size() >= OUTPUT_BUFFER_QUEUE_LIMIT) {
+                                    Integer oldestBuffer = outputBufferQueue.poll();
+                                    if (oldestBuffer != null) {
+                                        pacingDiag.dropQueued(oldestBuffer);
+                                        videoDecoder.releaseOutputBuffer(oldestBuffer, false);
                                         pacingDiag.queueDrop();
                                         frameDropped = true;
-                                    } catch (InterruptedException e) {
-                                        return;
                                     }
                                 }
 
