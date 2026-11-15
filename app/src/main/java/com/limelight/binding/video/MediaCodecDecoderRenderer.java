@@ -1358,46 +1358,24 @@ public class MediaCodecDecoderRenderer extends VideoDecoderRenderer implements C
                                         prefs.framePacing == PreferenceConfiguration.FRAME_PACING_CAP_FPS) {
                                     // In max smoothness or cap FPS mode, we want to never drop frames
                                     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
-                                        final long nowNs = System.nanoTime();
-                                        final long frameAgeNs = nowNs - (presentationTimeUs * 1000L);
-
-                                        // Smoothness: tighter threshold 1.05..1.2×
-                                        double pressure = Math.min(1.0, (ewmaJitterNs / vsyncPeriodNs) + (recentDrops * 0.1));
-                                        double factorSmooth = 1.2 - 0.15 * (1.0 - pressure);
-                                        factorSmooth = Math.max(1.05, Math.min(1.2, factorSmooth));
-
-                                        long dropThresholdSmoothNs = (long)(periodNs * factorSmooth);
-
-                                        if (frameAgeNs >= dropThresholdSmoothNs) {
-                                            if (preferLowerDelays) {
-                                                // ULL: present at next VSYNC (no scheduling)
-                                                releaseWithPolicy(lastIndex, System.nanoTime());} else {
-                                                // Smooth/Balanced: keep timestamp scheduling
-                                                videoDecoder.releaseOutputBuffer(lastIndex, /* render */ false);
-                                            }
-
-                                            frameDropped = true;
-                                            lastDropNs = nowNs;
-                                            pacingDiag.lateDrop();
-                                            recentDrops = Math.min(10, recentDrops + 1);
-                                            continue;
-                                        }
-
+                                        // A PTS of 0 makes SurfaceFlinger show every frame and never drop
+                                        // one, as the comment above says (and as Artemis 20.2.6 did). The
+                                        // age-based drop that was here discarded any frame older than about
+                                        // one refresh, which at high frame rates was nearly every frame.
                                         boolean diagDirectReleased = true;
-                                        if (preferLowerDelays) {
-                                            // ULL: present at next VSYNC (no scheduling)
-                                            diagDirectReleased = releaseWithPolicy(lastIndex, System.nanoTime());} else {
-                                            // Smooth/Balanced: keep timestamp scheduling
-                                            videoDecoder.releaseOutputBuffer(lastIndex, nowNs);
+                                        try {
+                                            videoDecoder.releaseOutputBuffer(lastIndex, 0);
+                                        } catch (IllegalStateException e) {
+                                            diagDirectReleased = false;
+                                            throw e;
+                                        } finally {
+                                            if (diagDirectReleased) {
+                                                pacingDiag.released(PacingDiag.PATH_DIRECT, presentationTimeUs, outputBufferQueue.size());
+                                            } else {
+                                                pacingDiag.releaseFailed();
+                                            }
                                         }
-
-                                        lastPresentNs = nowNs;
-                                        if (diagDirectReleased) {
-                                            pacingDiag.released(PacingDiag.PATH_DIRECT, presentationTimeUs, outputBufferQueue.size());
-                                        } else {
-                                            pacingDiag.releaseFailed();
-                                        }
-                                        recentDrops = Math.max(0, recentDrops - 1);
+                                        lastPresentNs = System.nanoTime();
 
                                         // [STATS] update subito dopo il present
                                         updateDecodeLatencyStats(presentationTimeUs);
