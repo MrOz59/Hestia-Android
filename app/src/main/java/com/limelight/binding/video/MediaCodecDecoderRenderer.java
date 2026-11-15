@@ -1247,13 +1247,18 @@ public class MediaCodecDecoderRenderer extends VideoDecoderRenderer implements C
                             + " appliedFramePacing=" + (prefs != null ? prefs.framePacing : -1)
                             + " preferLowerDelays=" + preferLowerDelays + " dequeueTimeoutUs=" + getOutputDequeueTimeoutUs()
                             + " forceTightThresholds=" + forceTightThresholds
-                            + " latestOnlyActive=" + (!preferLowerDelays));
+                            + " latestOnlyActive=" + (!preferLowerDelays && !managedMode));
                 }
                 long lastOutputNs = System.nanoTime();
                 while (!stopping) {
                     pacingDiag.maybeReport();
                     /* LATEST_ONLY_LOW_LATENCY */
-                    if (!preferLowerDelays) {
+                    // In Balanced mode every frame belongs to the queue and is released by the
+                    // Choreographer. Running this shortcut as well gave the same session two
+                    // release paths, so a frame released here could overtake older queued frames.
+                    // managedMode is read once when this thread starts; the pacing mode is only
+                    // written in Game.onCreate, before the stream starts.
+                    if (!preferLowerDelays && !managedMode) {
                         try {
                             android.media.MediaCodec.BufferInfo __tmpInfo = new android.media.MediaCodec.BufferInfo();
                             int __idx = videoDecoder.dequeueOutputBuffer(__tmpInfo, 0);
