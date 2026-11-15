@@ -186,7 +186,10 @@ public class PreferenceConfiguration {
     private static final boolean DEFAULT_ENABLE_MICROPHONE = false;
     private static final String DEFAULT_MICROPHONE_DEVICE = "0";
     private static final boolean DEFAULT_LATENCY_TOAST = false;
-    private static final String DEFAULT_FRAME_PACING = "latency";
+    // Balanced: what every session actually ran while Game.java forced Balanced.
+    private static final String DEFAULT_FRAME_PACING = "balanced";
+    // Set once the stored frame pacing value has been migrated (see getFramePacingValue).
+    private static final String FRAME_PACING_MIGRATED_PREF_STRING = "frame_pacing_respected_v1";
     private static final boolean DEFAULT_ABSOLUTE_MOUSE_MODE = false;
     private static final boolean DEFAULT_CONNECT_MOUSE_WIGGLE = true;
     private static final boolean DEFAULT_ENABLE_AUDIO_FX = false;
@@ -650,6 +653,18 @@ private static int getFramePacingValue(Context context) {
                     .remove(LEGACY_DISABLE_FRAME_DROP_PREF_STRING)
                     .putString(FRAME_PACING_PREF_STRING, legacyNeverDropFrames ? "balanced" : "latency")
                     .apply();
+        }
+
+        // Until now Game.java replaced every selection with Balanced, and "latency" was
+        // written as the default on first launch, so a stored "latency" doesn't mean the
+        // user chose it. Now that the selection is respected, move that value to Balanced
+        // once, so nobody's pacing changes without them choosing it.
+        if (!prefs.getBoolean(FRAME_PACING_MIGRATED_PREF_STRING, false)) {
+            SharedPreferences.Editor editor = prefs.edit();
+            if ("latency".equals(prefs.getString(FRAME_PACING_PREF_STRING, DEFAULT_FRAME_PACING))) {
+                editor.putString(FRAME_PACING_PREF_STRING, "balanced");
+            }
+            editor.putBoolean(FRAME_PACING_MIGRATED_PREF_STRING, true).apply();
         }
 
         String str = prefs.getString(FRAME_PACING_PREF_STRING, DEFAULT_FRAME_PACING);

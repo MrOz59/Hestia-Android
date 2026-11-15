@@ -51,6 +51,11 @@ public class MediaCodecDecoderRenderer extends VideoDecoderRenderer implements C
     // Diagnostic counters only; never changes what is released or when.
     private final PacingDiag pacingDiag = new PacingDiag();
 
+    // Whether this session uses Balanced pacing (queue + Choreographer). Decided once in
+    // start(), before either thread starts, and used everywhere the paths differ, so the
+    // Choreographer thread and the render thread's queue branch always agree.
+    private volatile boolean balancedSession = true;
+
 
     // Force tight thresholds regardless of device refresh (use vsyncPeriodNs always)
     private volatile boolean forceTightThresholds = false;
@@ -1166,7 +1171,7 @@ public class MediaCodecDecoderRenderer extends VideoDecoderRenderer implements C
     }
 
     private void startChoreographerThread() {
-        if (prefs.framePacing != PreferenceConfiguration.FRAME_PACING_BALANCED) {
+        if (!balancedSession) {
             // Not using Choreographer in this pacing mode
             return;
         }
@@ -1212,7 +1217,7 @@ public class MediaCodecDecoderRenderer extends VideoDecoderRenderer implements C
 
                 // Adaptive period selection to avoid added latency on high-refresh devices
                 final boolean highRefresh = displayHz >= 90f;
-                final boolean managedMode = (prefs != null && prefs.framePacing == PreferenceConfiguration.FRAME_PACING_BALANCED);
+                final boolean managedMode = balancedSession;
                 // Use stream-aligned thresholds only on lower-refresh screens while in Balanced.
                 final long periodNs = (preferLowerDelays ? vsyncPeriodNs : Math.max(vsyncPeriodNs, streamPeriodNs));
                 boolean isC2Decoder = false;
@@ -1247,7 +1252,8 @@ public class MediaCodecDecoderRenderer extends VideoDecoderRenderer implements C
                             + " appliedFramePacing=" + (prefs != null ? prefs.framePacing : -1)
                             + " preferLowerDelays=" + preferLowerDelays + " dequeueTimeoutUs=" + getOutputDequeueTimeoutUs()
                             + " forceTightThresholds=" + forceTightThresholds
-                            + " latestOnlyActive=" + (!preferLowerDelays && !managedMode));
+                            + " latestOnlyActive=" + (!preferLowerDelays && prefs.framePacing == PreferenceConfiguration.FRAME_PACING_MIN_LATENCY)
+                            + " balancedSession=" + balancedSession);
                 }
                 long lastOutputNs = System.nanoTime();
                 while (!stopping) {
@@ -1256,9 +1262,10 @@ public class MediaCodecDecoderRenderer extends VideoDecoderRenderer implements C
                     // In Balanced mode every frame belongs to the queue and is released by the
                     // Choreographer. Running this shortcut as well gave the same session two
                     // release paths, so a frame released here could overtake older queued frames.
-                    // managedMode is read once when this thread starts; the pacing mode is only
-                    // written in Game.onCreate, before the stream starts.
-                    if (!preferLowerDelays && !managedMode) {
+                    // It only runs in Min latency, where dropping queued frames for the lowest
+                    // delay is the point; that mode releases on this thread only, so the drain
+                    // can't overtake anything. Max smoothness and Cap FPS never use it.
+                    if (!preferLowerDelays && prefs.framePacing == PreferenceConfiguration.FRAME_PACING_MIN_LATENCY) {
                         try {
                             android.media.MediaCodec.BufferInfo __tmpInfo = new android.media.MediaCodec.BufferInfo();
                             int __idx = videoDecoder.dequeueOutputBuffer(__tmpInfo, 0);
@@ -1334,7 +1341,7 @@ public class MediaCodecDecoderRenderer extends VideoDecoderRenderer implements C
                             lastDecoderPtsUs = presentationTimeUs;
 
                             // Render the latest frame now if frame pacing isn't in balanced mode
-                            if (prefs.framePacing != PreferenceConfiguration.FRAME_PACING_BALANCED) {
+                            if (!balancedSession) {
                                 // Get the last output buffer in the queue
                                 while ((outIndex = videoDecoder.dequeueOutputBuffer(info, getOutputDequeueTimeoutUs())) >= 0) {
                                     videoDecoder.releaseOutputBuffer(lastIndex, false);
@@ -1376,15 +1383,20 @@ public class MediaCodecDecoderRenderer extends VideoDecoderRenderer implements C
                                             continue;
                                         }
 
+                                        boolean diagDirectReleased = true;
                                         if (preferLowerDelays) {
                                             // ULL: present at next VSYNC (no scheduling)
-                                            releaseWithPolicy(lastIndex, System.nanoTime());} else {
+                                            diagDirectReleased = releaseWithPolicy(lastIndex, System.nanoTime());} else {
                                             // Smooth/Balanced: keep timestamp scheduling
                                             videoDecoder.releaseOutputBuffer(lastIndex, nowNs);
                                         }
 
                                         lastPresentNs = nowNs;
-                                        pacingDiag.released(PacingDiag.PATH_DIRECT, presentationTimeUs, outputBufferQueue.size());
+                                        if (diagDirectReleased) {
+                                            pacingDiag.released(PacingDiag.PATH_DIRECT, presentationTimeUs, outputBufferQueue.size());
+                                        } else {
+                                            pacingDiag.releaseFailed();
+                                        }
                                         recentDrops = Math.max(0, recentDrops - 1);
 
                                         // [STATS] update subito dopo il present
@@ -1451,15 +1463,20 @@ public class MediaCodecDecoderRenderer extends VideoDecoderRenderer implements C
                                             continue; // niente stats sui frame droppati
                                         }
 
+                                        boolean diagDirectReleased = true;
                                         if (preferLowerDelays) {
                                             // ULL: present at next VSYNC (no scheduling)
-                                            releaseWithPolicy(lastIndex, System.nanoTime());} else {
+                                            diagDirectReleased = releaseWithPolicy(lastIndex, System.nanoTime());} else {
                                             // Smooth/Balanced: keep timestamp scheduling
                                             videoDecoder.releaseOutputBuffer(lastIndex, nowNs);
                                         }
 
                                         lastPresentNs = nowNs;
-                                        pacingDiag.released(PacingDiag.PATH_DIRECT, presentationTimeUs, outputBufferQueue.size());
+                                        if (diagDirectReleased) {
+                                            pacingDiag.released(PacingDiag.PATH_DIRECT, presentationTimeUs, outputBufferQueue.size());
+                                        } else {
+                                            pacingDiag.releaseFailed();
+                                        }
                                         if (!isLate) lateStreak = 0;
                                         recentDrops = Math.max(0, recentDrops - 1);
 
@@ -1641,6 +1658,7 @@ public class MediaCodecDecoderRenderer extends VideoDecoderRenderer implements C
     @Override
     public void start() {
         if (pyroWaveRenderer != null) { pyroWaveRenderer.start(); return; }
+        balancedSession = prefs.framePacing == PreferenceConfiguration.FRAME_PACING_BALANCED;
         startRendererThread();
         startChoreographerThread();
     }
