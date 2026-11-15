@@ -697,9 +697,15 @@ private static int getFramePacingValue(Context context) {
         else if (str.equals("smoothness")) {
             return FRAME_PACING_MAX_SMOOTHNESS;
         }
+        else if (str.equals("warp") || str.equals("warp2")) {
+            // Warp requests 2x/4x the stream frame rate (framePacingWarpFactor) and paces
+            // it with the Balanced queue, which shows at most one frame per vsync. That is
+            // what these options have done while Game.java forced Balanced; keep it.
+            return FRAME_PACING_BALANCED;
+        }
         else {
-            // Should never get here
-            return FRAME_PACING_MIN_LATENCY;
+            // Unknown value: use the default.
+            return FRAME_PACING_BALANCED;
         }
     }
 
