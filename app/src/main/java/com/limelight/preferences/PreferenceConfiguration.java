@@ -659,13 +659,30 @@ private static int getFramePacingValue(Context context) {
         // written as the default on first launch, so a stored "latency" doesn't mean the
         // user chose it. Now that the selection is respected, move that value to Balanced
         // once, so nobody's pacing changes without them choosing it.
-        if (!prefs.getBoolean(FRAME_PACING_MIGRATED_PREF_STRING, false)) {
-            SharedPreferences.Editor editor = prefs.edit();
-            if ("latency".equals(prefs.getString(FRAME_PACING_PREF_STRING, DEFAULT_FRAME_PACING))) {
+        // The global settings and each settings profile hold their own value, and an active
+        // profile's value overrides the global one, so migrate each of them separately.
+        SharedPreferences basePrefs = androidx.preference.PreferenceManager.getDefaultSharedPreferences(context);
+        if (!basePrefs.getBoolean(FRAME_PACING_MIGRATED_PREF_STRING, false)) {
+            SharedPreferences.Editor editor = basePrefs.edit();
+            if ("latency".equals(basePrefs.getString(FRAME_PACING_PREF_STRING, DEFAULT_FRAME_PACING))) {
                 editor.putString(FRAME_PACING_PREF_STRING, "balanced");
             }
             editor.putBoolean(FRAME_PACING_MIGRATED_PREF_STRING, true).apply();
         }
+        ProfilesManager profilesManager = ProfilesManager.getInstance();
+        for (com.limelight.profiles.SettingsProfile profile : profilesManager.getProfiles()) {
+            java.util.Map<String, Object> options = profile.getOptions();
+            if (options == null || Boolean.TRUE.equals(options.get(FRAME_PACING_MIGRATED_PREF_STRING))) {
+                continue;
+            }
+            if ("latency".equals(options.get(FRAME_PACING_PREF_STRING))) {
+                options.put(FRAME_PACING_PREF_STRING, "balanced");
+            }
+            options.put(FRAME_PACING_MIGRATED_PREF_STRING, Boolean.TRUE);
+            profilesManager.update(profile);
+        }
+        // Read through the overlay again, so an active profile's migrated value is used.
+        prefs = ProfilesManager.getInstance().getOverlayingSharedPreferences(context);
 
         String str = prefs.getString(FRAME_PACING_PREF_STRING, DEFAULT_FRAME_PACING);
         if (str.equals("latency")) {
