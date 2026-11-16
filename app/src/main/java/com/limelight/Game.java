@@ -699,6 +699,11 @@ public class Game extends AppCompatActivity implements SurfaceHolder.Callback,
         } catch (Throwable ignored) {}
 
 // --- latency profile selection ---
+        // Diagnostic only: record what the user selected before it is overridden below.
+        try {
+            LimeLog.info("PacingDiag config: selectedFramePacing=" + prefConfig.framePacing
+                    + " lfrSwitch=" + prefConfig.preferLowerDelays);
+        } catch (Throwable ignored) {}
         try {
             if (prefConfig != null && prefConfig.preferLowerDelays) {
                 // Intermediate: more responsive than Balanced but not 0 µs
