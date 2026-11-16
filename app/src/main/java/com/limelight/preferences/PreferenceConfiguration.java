@@ -186,7 +186,10 @@ public class PreferenceConfiguration {
     private static final boolean DEFAULT_ENABLE_MICROPHONE = false;
     private static final String DEFAULT_MICROPHONE_DEVICE = "0";
     private static final boolean DEFAULT_LATENCY_TOAST = false;
-    private static final String DEFAULT_FRAME_PACING = "latency";
+    // Balanced: what every session actually ran while Game.java forced Balanced.
+    private static final String DEFAULT_FRAME_PACING = "balanced";
+    // Set once the stored frame pacing value has been migrated (see getFramePacingValue).
+    private static final String FRAME_PACING_MIGRATED_PREF_STRING = "frame_pacing_respected_v1";
     private static final boolean DEFAULT_ABSOLUTE_MOUSE_MODE = false;
     private static final boolean DEFAULT_CONNECT_MOUSE_WIGGLE = true;
     private static final boolean DEFAULT_ENABLE_AUDIO_FX = false;
@@ -640,7 +643,76 @@ public class PreferenceConfiguration {
         // default true: favor lower delay unless user opts out
         return prefs.getBoolean(LOW_LATENCY_FRAME_BALANCE_PREF_STRING, false);
     }
-private static int getFramePacingValue(Context context) {
+// Settings are read from many places and threads, so the migration runs once per process,
+    // under a lock. Profiles are loaded in ArtemisApplication.onCreate, before any read.
+    private static volatile boolean framePacingMigrationDone;
+
+    /** For tests only: let the next settings read run the migration again. */
+    public static void resetFramePacingMigrationForTesting() {
+        framePacingMigrationDone = false;
+    }
+
+    private static void migrateFramePacingOnce(Context context) {
+        if (framePacingMigrationDone) {
+            return;
+        }
+        synchronized (PreferenceConfiguration.class) {
+            if (framePacingMigrationDone) {
+                return;
+            }
+            SharedPreferences basePrefs = androidx.preference.PreferenceManager.getDefaultSharedPreferences(context);
+            if (!basePrefs.getBoolean(FRAME_PACING_MIGRATED_PREF_STRING, false)) {
+                SharedPreferences.Editor editor = basePrefs.edit();
+                // Legacy never-drop-frames option: true meant Balanced, false meant Min latency,
+                // which migrates to Balanced as well.
+                if (basePrefs.contains(LEGACY_DISABLE_FRAME_DROP_PREF_STRING)) {
+                    editor.remove(LEGACY_DISABLE_FRAME_DROP_PREF_STRING);
+                    if (!basePrefs.contains(FRAME_PACING_PREF_STRING)) {
+                        editor.putString(FRAME_PACING_PREF_STRING, "balanced");
+                    }
+                }
+                if ("latency".equals(basePrefs.getString(FRAME_PACING_PREF_STRING, DEFAULT_FRAME_PACING))) {
+                    editor.putString(FRAME_PACING_PREF_STRING, "balanced");
+                }
+                editor.putBoolean(FRAME_PACING_MIGRATED_PREF_STRING, true).commit();
+            }
+
+            // Each profile is marked once migrated, so a value chosen afterwards is left alone.
+            // New profiles copy the global settings, marker included. Save directly rather than
+            // through update(), which would notify listeners (UI) from whatever thread this is.
+            ProfilesManager profilesManager = ProfilesManager.getInstance();
+            boolean profilesChanged = false;
+            for (com.limelight.profiles.SettingsProfile profile : profilesManager.getProfiles()) {
+                java.util.Map<String, Object> options = profile.getOptions();
+                if (options == null || Boolean.TRUE.equals(options.get(FRAME_PACING_MIGRATED_PREF_STRING))) {
+                    continue;
+                }
+                // A very old profile may still hold the legacy never-drop-frames option. The legacy
+                // conversion in getFramePacingValue reads through the overlay and would rewrite the
+                // global value on every read while the profile keeps it, so convert it here.
+                if (options.remove(LEGACY_DISABLE_FRAME_DROP_PREF_STRING) != null
+                        && !options.containsKey(FRAME_PACING_PREF_STRING)) {
+                    options.put(FRAME_PACING_PREF_STRING, "balanced");
+                }
+                if ("latency".equals(options.get(FRAME_PACING_PREF_STRING))) {
+                    options.put(FRAME_PACING_PREF_STRING, "balanced");
+                }
+                options.put(FRAME_PACING_MIGRATED_PREF_STRING, Boolean.TRUE);
+                profilesChanged = true;
+            }
+            if (profilesChanged) {
+                profilesManager.save(context);
+            }
+            framePacingMigrationDone = true;
+        }
+    }
+
+    private static int getFramePacingValue(Context context) {
+        // Runs first: it also converts the legacy never-drop-frames option, in the global
+        // settings and in every profile, so the legacy conversion below can't rewrite a
+        // migrated value.
+        migrateFramePacingOnce(context);
+
         SharedPreferences prefs = ProfilesManager.getInstance().getOverlayingSharedPreferences(context);
 
         // Migrate legacy never drop frames option to the new location
@@ -651,6 +723,13 @@ private static int getFramePacingValue(Context context) {
                     .putString(FRAME_PACING_PREF_STRING, legacyNeverDropFrames ? "balanced" : "latency")
                     .apply();
         }
+
+        // Until now Game.java replaced every selection with Balanced, and "latency" was
+        // written as the default on first launch, so a stored "latency" doesn't mean the
+        // user chose it. Now that the selection is respected, move that value to Balanced
+        // once, so nobody's pacing changes without them choosing it.
+        // (Done by migrateFramePacingOnce at the top of this method, for the global settings
+        // and for each settings profile, whose value overrides the global one when active.)
 
         String str = prefs.getString(FRAME_PACING_PREF_STRING, DEFAULT_FRAME_PACING);
         if (str.equals("latency")) {
@@ -665,9 +744,15 @@ private static int getFramePacingValue(Context context) {
         else if (str.equals("smoothness")) {
             return FRAME_PACING_MAX_SMOOTHNESS;
         }
+        else if (str.equals("warp") || str.equals("warp2")) {
+            // Warp requests 2x/4x the stream frame rate (framePacingWarpFactor) and paces
+            // it with the Balanced queue, which shows at most one frame per vsync. That is
+            // what these options have done while Game.java forced Balanced; keep it.
+            return FRAME_PACING_BALANCED;
+        }
         else {
-            // Should never get here
-            return FRAME_PACING_MIN_LATENCY;
+            // Unknown value: use the default.
+            return FRAME_PACING_BALANCED;
         }
     }
 

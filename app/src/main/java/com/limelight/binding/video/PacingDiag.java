@@ -17,9 +17,8 @@ import java.util.concurrent.atomic.AtomicLongArray;
  * A release call is not proof that the frame reached the screen. Compare these
  * counts with SurfaceFlinger presentation timestamps for the same window.
  *
- * Scope: success/failure accounting is exact for Balanced pacing (the queue and
- * Choreographer path). The direct-release counts in the other pacing modes still
- * count a release whose helper call failed; audit them before relying on them.
+ * Success/failure accounting covers every release path: a helper release that
+ * failed both attempts is counted as releaseFailed, not as a release.
  */
 final class PacingDiag {
     /** Released by the non-blocking "latest frame only" block in the render thread. */
