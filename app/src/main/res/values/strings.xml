@@ -840,6 +840,13 @@
     <string name="hestia_stream_info_latency">\nNetwork latency %1$d ms</string>
     <string name="hestia_stream_info_failed">Hermes: %1$s</string>
     <string name="hestia_prepare_ok">Hermes: virtual display prepared for %1$d×%2$d at %3$d FPS.</string>
+    <string name="hestia_override_virtual_display_on">Hermes: virtual display on, %1$s.</string>
+    <string name="hestia_override_virtual_display_off">Hermes: no virtual display, %1$s.</string>
+    <string name="hestia_override_scale">Hermes: resolution scale %1$d%%, %2$s.</string>
+    <string name="hestia_override_app_forced">forced by this app\'s setting on the host</string>
+    <string name="hestia_override_isolated">this app always runs on a display of its own</string>
+    <string name="hestia_override_headless">the host has no monitor</string>
+    <string name="hestia_override_host_setting">set by the host</string>
     <string name="hestia_prepare_unreachable">The Hermes API isn\'t responding, so the virtual display settings weren\'t sent. Launching with default settings.</string>
     <string name="hestia_prepare_incompatible">This Hermes version is incompatible with Hestia. Launching with default settings.</string>
     <string name="hestia_prepare_no_virtual_display">Hermes reports no virtual display support. Launching with default settings.</string>

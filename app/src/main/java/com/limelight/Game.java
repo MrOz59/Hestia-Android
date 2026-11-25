@@ -911,20 +911,22 @@ public class Game extends AppCompatActivity implements SurfaceHolder.Callback,
 
                 decoderRenderer.setRenderTarget(streamContainer.getSurface());
 
-                if (!vDisplay || httpConn == null) {
-                    // No enhanced session requested. Don't delay ordinary
-                    // Moonlight/GameStream streaming on non-Hermes hosts.
+                // Hermes needs prepare before the normal GameStream launch to
+                // know the settings asked for here, "Use Virtual Display: off"
+                // included: the launch URL cannot tell off from unset, so a
+                // host app's own setting would otherwise apply. Don't delay
+                // ordinary Moonlight/GameStream streaming on other hosts.
+                final boolean hestiaKnown = getIntent().getBooleanExtra(EXTRA_HESTIA_KNOWN, false);
+                if (httpConn == null || (!vDisplay && !hestiaKnown)) {
                     conn.start(new AndroidAudioRenderer(Game.this, prefConfig.playHostAudio),
                             decoderRenderer, Game.this);
                     return;
                 }
 
-                // Hermes requires prepare before the normal GameStream launch.
                 // All HTTP requests run off the UI thread. Any Hestia failure
                 // must fall back to the existing streaming implementation,
                 // but on a Hermes host the user is told why, instead of
                 // silently getting a stream without the requested display.
-                final boolean hestiaKnown = getIntent().getBooleanExtra(EXTRA_HESTIA_KNOWN, false);
                 if (spinner != null) {
                     spinner.setMessage(getString(R.string.hestia_preparing_session));
                 }
@@ -932,7 +934,7 @@ public class Game extends AppCompatActivity implements SurfaceHolder.Callback,
                     String notice = null;
                     try {
                         notice = prepareHestiaSession(prepareWidth, prepareHeight, prepareFps,
-                                prepareBitrate, prepareHdr, prepareRefreshRate);
+                                prepareBitrate, prepareHdr, vDisplay, prepareRefreshRate);
                     } catch (java.io.IOException e) {
                         LimeLog.info("Hestia API unavailable; using GameStream launch: "
                                 + e.getClass().getSimpleName());
@@ -1180,7 +1182,7 @@ public class Game extends AppCompatActivity implements SurfaceHolder.Callback,
      * host is simply not Hermes. Runs off the UI thread.
      */
     private String prepareHestiaSession(int width, int height, int fps, int bitrateKbps,
-            boolean hdr, int refreshRate) throws java.io.IOException {
+            boolean hdr, boolean virtualDisplay, int refreshRate) throws java.io.IOException {
         HestiaCapabilities caps = httpConn.getHestiaCapabilities();
         if (caps.isIncompatibleHermes()) {
             LimeLog.warning("Hermes protocol is incompatible; using GameStream launch");
@@ -1190,7 +1192,7 @@ public class Game extends AppCompatActivity implements SurfaceHolder.Callback,
             // Ordinary Moonlight/Sunshine/Apollo host: nothing to say.
             return null;
         }
-        if (!caps.hasVirtualDisplay()) {
+        if (virtualDisplay && !caps.hasVirtualDisplay()) {
             return getString(R.string.hestia_prepare_no_virtual_display);
         }
 
@@ -1221,14 +1223,54 @@ public class Game extends AppCompatActivity implements SurfaceHolder.Callback,
         }
 
         HestiaSessionRequest payload = HestiaSessionRequest.create(width, height, fps,
-                bitrateKbps, scale, hdr, true, appId, refreshRate, BuildConfig.VERSION_NAME);
+                bitrateKbps, scale, hdr, virtualDisplay, appId, refreshRate, BuildConfig.VERSION_NAME);
         HestiaApiResponse response = httpConn.prepareHestiaSession(payload);
         if (!response.isOk()) {
             LimeLog.warning("Hestia v1 preparation rejected: " + response.describeError());
             return getString(R.string.hestia_prepare_failed, response.describeError());
         }
-        LimeLog.info("Hestia v1 virtual display session prepared");
-        return getString(R.string.hestia_prepare_ok, width, height, fps);
+        LimeLog.info("Hestia v1 session prepared (virtual display " + (virtualDisplay ? "on" : "off") + ")");
+
+        // Say where a host setting overrides one chosen here, so the stream
+        // is never a silent surprise.
+        java.util.List<HestiaAppliedSettings.Override> overrides =
+                HestiaAppliedSettings.overrides(response.jsonObject());
+        if (!overrides.isEmpty()) {
+            StringBuilder notice = new StringBuilder();
+            for (HestiaAppliedSettings.Override override : overrides) {
+                if (notice.length() > 0) {
+                    notice.append('\n');
+                }
+                notice.append(describeOverride(override));
+            }
+            return notice.toString();
+        }
+        return virtualDisplay ? getString(R.string.hestia_prepare_ok, width, height, fps) : null;
+    }
+
+    private String describeOverride(HestiaAppliedSettings.Override override) {
+        String why;
+        switch (override.source) {
+            case APP_FORCED:
+                why = getString(R.string.hestia_override_app_forced);
+                break;
+            case ISOLATED_SESSION:
+                why = getString(R.string.hestia_override_isolated);
+                break;
+            case HEADLESS:
+                why = getString(R.string.hestia_override_headless);
+                break;
+            case HOST_SETTING:
+            default:
+                why = getString(R.string.hestia_override_host_setting);
+                break;
+        }
+        if (HestiaAppliedSettings.SCALE_FACTOR.equals(override.setting)) {
+            return getString(R.string.hestia_override_scale, override.effective, why);
+        }
+        return getString(override.effective != 0 ?
+                R.string.hestia_override_virtual_display_on :
+                R.string.hestia_override_virtual_display_off, why);
     }
 
     private void initVirtualController(){
