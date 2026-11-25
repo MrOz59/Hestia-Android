@@ -30,6 +30,7 @@ import com.limelight.binding.video.CrashListener;
 import com.limelight.binding.video.MediaCodecDecoderRenderer;
 import com.limelight.binding.video.MediaCodecHelper;
 import com.limelight.binding.video.PerfOverlayListener;
+import com.limelight.hestia.HestiaAppliedSettings;
 import com.limelight.hestia.HestiaApiResponse;
 import com.limelight.hestia.HestiaCapabilities;
 import com.limelight.hestia.HestiaPermissions;
