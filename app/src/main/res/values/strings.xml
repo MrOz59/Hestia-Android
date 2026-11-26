@@ -585,7 +585,7 @@
    	<string name="title_checkbox_forceTightThresholds">Tight Vsync (Experimental)</string>
     <string name="summary_checkbox_forceTightThresholds">Tighter VSYNC thresholds for lower latency; may increase drops.</string>
     <string name="title_checkbox_use_virtual_display">Use Virtual Display</string>
-    <string name="summary_checkbox_use_virtual_display">Use Virtual Display by default.\nVirtual Display can automatically match your client side resolution and frame rate settings, giving you a seamless streaming experience.\nRequires Hermes or Apollo as host streaming software.</string>
+    <string name="summary_checkbox_use_virtual_display">Use Virtual Display by default.\nVirtual Display can automatically match your client side resolution and frame rate settings, giving you a seamless streaming experience.\nRequires Hermes or Apollo as host streaming software.\nOn Hermes, on or off is honoured unless the host app forces its own setting; Hestia tells you when it does.</string>
     <string name="title_checkbox_resume_without_confirm">Quick Resume</string>
     <string name="summary_checkbox_resume_without_confirm">Do not show resume menu when clicking resume button, resume the app immediately.</string>
     <string name="title_checkbox_enable_sticky_modifier_key_virtual_keyboard">Sticky modifier keys</string>
@@ -840,6 +840,13 @@
     <string name="hestia_stream_info_latency">\nNetwork latency %1$d ms</string>
     <string name="hestia_stream_info_failed">Hermes: %1$s</string>
     <string name="hestia_prepare_ok">Hermes: virtual display prepared for %1$d×%2$d at %3$d FPS.</string>
+    <string name="hestia_override_virtual_display_on">Hermes: virtual display on, %1$s.</string>
+    <string name="hestia_override_virtual_display_off">Hermes: no virtual display, %1$s.</string>
+    <string name="hestia_override_scale">Hermes: resolution scale %1$d%%, %2$s.</string>
+    <string name="hestia_override_app_forced">forced by this app\'s setting on the host</string>
+    <string name="hestia_override_isolated">this app always runs on a display of its own</string>
+    <string name="hestia_override_headless">the host has no monitor</string>
+    <string name="hestia_override_host_setting">set by the host</string>
     <string name="hestia_prepare_unreachable">The Hermes API isn\'t responding, so the virtual display settings weren\'t sent. Launching with default settings.</string>
     <string name="hestia_prepare_incompatible">This Hermes version is incompatible with Hestia. Launching with default settings.</string>
     <string name="hestia_prepare_no_virtual_display">Hermes reports no virtual display support. Launching with default settings.</string>
