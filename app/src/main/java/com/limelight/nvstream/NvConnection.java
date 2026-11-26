@@ -44,6 +44,11 @@ import com.limelight.nvstream.input.MouseButtonPacket;
 import com.limelight.nvstream.jni.MoonBridge;
 
 public class NvConnection {
+    /** Runs on the connection thread before a fresh app launch. Return false to cancel that launch. */
+    public interface LaunchPreparation {
+        boolean prepare();
+    }
+
     // Context parameters
     private LimelightCryptoProvider cryptoProvider;
     private String uniqueId;
@@ -222,7 +227,7 @@ public class NvConnection {
         return StreamConfiguration.STREAM_CFG_AUTO;
     }
     
-    private boolean startApp() throws XmlPullParserException, IOException
+    private boolean startApp(LaunchPreparation preparation) throws XmlPullParserException, IOException
     {
         NvHTTP h = new NvHTTP(context.serverAddress, context.httpsPort, uniqueId, context.serverCert, cryptoProvider);
 
@@ -325,9 +330,9 @@ public class NvConnection {
                     }
                 } else if (Objects.equals(NvApp.REMOTE_INPUT_UUID, app.getAppUUID())) {
                     // When launching InputOnly, we shouldn't try terminating the current running app
-                    return launchNotRunningApp(h, context);
+                    return launchNotRunningApp(h, context, preparation);
                 } else {
-                    return quitAndLaunch(h, context);
+                    return quitAndLaunch(h, context, preparation);
                 }
             } catch (HostHttpResponseException e) {
                 if (e.getErrorCode() == 470) {
@@ -351,12 +356,12 @@ public class NvConnection {
             return true;
         }
         else {
-            return launchNotRunningApp(h, context);
+            return launchNotRunningApp(h, context, preparation);
         }
     }
 
-    protected boolean quitAndLaunch(NvHTTP h, ConnectionContext context) throws IOException,
-            XmlPullParserException {
+    private boolean quitAndLaunch(NvHTTP h, ConnectionContext context, LaunchPreparation preparation)
+            throws IOException, XmlPullParserException {
         try {
             if (!h.quitApp()) {
                 context.connListener.displayMessage("Failed to quit previous session! You must quit it manually");
@@ -374,11 +379,17 @@ public class NvConnection {
             }
         }
 
-        return launchNotRunningApp(h, context);
+        return launchNotRunningApp(h, context, preparation);
     }
     
-    private boolean launchNotRunningApp(NvHTTP h, ConnectionContext context)
+    private boolean launchNotRunningApp(NvHTTP h, ConnectionContext context, LaunchPreparation preparation)
             throws IOException, XmlPullParserException {
+        // Hermes consumes prepared settings on a normal /launch. Input-only launches and /resume skip them.
+        if (preparation != null && !Objects.equals(NvApp.REMOTE_INPUT_UUID, context.streamConfig.getApp().getAppUUID())
+                && !preparation.prepare()) {
+            return false;
+        }
+
         // Launch the app since it's not running
         if (!h.launchApp(context, "launch", context.streamConfig.getApp().getAppUUID(), context.streamConfig.getApp().getAppId(), context.negotiatedHdr)) {
             context.connListener.displayMessage("Failed to launch application");
@@ -391,6 +402,12 @@ public class NvConnection {
     }
 
     public void start(final AudioRenderer audioRenderer, final VideoDecoderRenderer videoDecoderRenderer, final NvConnectionListener connectionListener)
+    {
+        start(audioRenderer, videoDecoderRenderer, connectionListener, null);
+    }
+
+    public void start(final AudioRenderer audioRenderer, final VideoDecoderRenderer videoDecoderRenderer,
+                      final NvConnectionListener connectionListener, final LaunchPreparation preparation)
     {
         new Thread(new Runnable() {
             public void run() {
@@ -406,7 +423,7 @@ public class NvConnection {
                 do {
                     boolean retry = false;
                     try {
-                        if (!startApp()) {
+                        if (!startApp(preparation)) {
                             retry = context.connListener.stageFailed(appName, 0, 0);
                             if (!retry) {
                                 return;

@@ -912,48 +912,14 @@ public class Game extends AppCompatActivity implements SurfaceHolder.Callback,
 
                 decoderRenderer.setRenderTarget(streamContainer.getSurface());
 
-                // Hermes needs prepare before the normal GameStream launch to
-                // know the settings asked for here, "Use Virtual Display: off"
-                // included: the launch URL cannot tell off from unset, so a
-                // host app's own setting would otherwise apply. Don't delay
-                // ordinary Moonlight/GameStream streaming on other hosts.
                 final boolean hestiaKnown = getIntent().getBooleanExtra(EXTRA_HESTIA_KNOWN, false);
-                if (httpConn == null || (!vDisplay && !hestiaKnown)) {
-                    conn.start(new AndroidAudioRenderer(Game.this, prefConfig.playHostAudio),
-                            decoderRenderer, Game.this);
-                    return;
+                NvConnection.LaunchPreparation preparation = null;
+                if (httpConn != null && (vDisplay || hestiaKnown)) {
+                    preparation = () -> prepareHestiaLaunch(prepareWidth, prepareHeight, prepareFps,
+                            prepareBitrate, prepareHdr, vDisplay, prepareRefreshRate, hestiaKnown);
                 }
-
-                // All HTTP requests run off the UI thread. Any Hestia failure
-                // must fall back to the existing streaming implementation,
-                // but on a Hermes host the user is told why, instead of
-                // silently getting a stream without the requested display.
-                if (spinner != null) {
-                    spinner.setMessage(getString(R.string.hestia_preparing_session));
-                }
-                new Thread(() -> {
-                    String notice = null;
-                    try {
-                        notice = prepareHestiaSession(prepareWidth, prepareHeight, prepareFps,
-                                prepareBitrate, prepareHdr, vDisplay, prepareRefreshRate);
-                    } catch (java.io.IOException e) {
-                        LimeLog.info("Hestia API unavailable; using GameStream launch: "
-                                + e.getClass().getSimpleName());
-                        if (hestiaKnown) {
-                            notice = getString(R.string.hestia_prepare_unreachable);
-                        }
-                    }
-                    final String finalNotice = notice;
-                    runOnUiThread(() -> {
-                        if (!isFinishing() && !isDestroyed() && conn != null) {
-                            if (finalNotice != null) {
-                                Toast.makeText(Game.this, finalNotice, Toast.LENGTH_LONG).show();
-                            }
-                            conn.start(new AndroidAudioRenderer(Game.this, prefConfig.playHostAudio),
-                                    decoderRenderer, Game.this);
-                        }
-                    });
-                }, "HestiaSessionPrepare").start();
+                conn.start(new AndroidAudioRenderer(Game.this, prefConfig.playHostAudio),
+                        decoderRenderer, Game.this, preparation);
             }
         });
 
@@ -1175,6 +1141,37 @@ public class Game extends AppCompatActivity implements SurfaceHolder.Callback,
 
     public Boolean isKeyboardLayoutVisible() {
         return keyBoardLayoutController != null && keyBoardLayoutController.shown;
+    }
+
+    private boolean prepareHestiaLaunch(int width, int height, int fps, int bitrateKbps,
+            boolean hdr, boolean virtualDisplay, int refreshRate, boolean hestiaKnown) {
+        if (isFinishing() || isDestroyed()) {
+            return false;
+        }
+        runOnUiThread(() -> {
+            if (spinner != null && !isFinishing() && !isDestroyed()) {
+                spinner.setMessage(getString(R.string.hestia_preparing_session));
+            }
+        });
+
+        String notice = null;
+        try {
+            notice = prepareHestiaSession(width, height, fps, bitrateKbps, hdr, virtualDisplay, refreshRate);
+        } catch (java.io.IOException e) {
+            LimeLog.info("Hestia API unavailable; using GameStream launch: " + e.getClass().getSimpleName());
+            if (hestiaKnown) {
+                notice = getString(R.string.hestia_prepare_unreachable);
+            }
+        }
+        if (notice != null) {
+            final String message = notice;
+            runOnUiThread(() -> {
+                if (!isFinishing() && !isDestroyed()) {
+                    Toast.makeText(Game.this, message, Toast.LENGTH_LONG).show();
+                }
+            });
+        }
+        return !isFinishing() && !isDestroyed();
     }
 
     /**
@@ -3794,6 +3791,9 @@ public class Game extends AppCompatActivity implements SurfaceHolder.Callback,
 
     @Override
     public boolean stageFailed(final String stage, final int portFlags, final int errorCode) {
+        if (isFinishing() || isDestroyed()) {
+            return false;
+        }
         // Perform a connection test if the failure could be due to a blocked port
         // This does network I/O, so don't do it on the main thread.
         final int portTestResult = MoonBridge.testClientConnectivity(ServerHelper.CONNECTION_TEST_SERVER, 443, portFlags);
@@ -3806,6 +3806,9 @@ public class Game extends AppCompatActivity implements SurfaceHolder.Callback,
         runOnUiThread(new Runnable() {
             @Override
             public void run() {
+                if (isFinishing() || isDestroyed()) {
+                    return;
+                }
                 if (spinner != null) {
                     spinner.dismiss();
                     spinner = null;
